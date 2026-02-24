@@ -1,0 +1,5 @@
+{
+  "name": "The Canvas Tutor",
+  "description": "A virtual math tutor that sees your homework and talks to you in real-time.",
+  "requestFramePermissions": ["camera", "microphone"]
+}
