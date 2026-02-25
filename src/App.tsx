@@ -53,6 +53,8 @@ export default function App() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
       streamRef.current = stream;
       setShowSplash(false);
+      // Automatically start the session after permissions are granted
+      startSession();
     } catch (err) {
       console.error("Permission error:", err);
       setPermissionError("We need camera and microphone access to see your homework and hear your questions. Please allow access in your browser settings.");
@@ -122,9 +124,13 @@ export default function App() {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
           },
-          systemInstruction: `Role: You are "OwlTutor," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
+          systemInstruction: `Role: You are "OwlHelp!," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
 
-Capabilities: You have vision. The user will show you their handwritten or printed math problems via their camera. You must pay close attention to exactly what they are pointing at or writing.
+Capabilities: 
+- Vision: You can see the user's handwritten or printed math problems via their camera. Pay close attention to exactly what they are pointing at or writing.
+- Whiteboard: You have a digital whiteboard. You can use the "writeOnWhiteboard" tool to draw diagrams, write equations, or explain concepts visually if the student needs extra help.
+
+Initial Greeting: When the session starts, you will receive a prompt to introduce yourself. You MUST say exactly: "Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help."
 
 Strict Rules of Engagement:
 1. Never Give the Final Answer: Under no circumstances should you just solve the problem for them.
@@ -160,6 +166,22 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           onopen: () => {
             setIsConnected(true);
             setIsConnecting(false);
+
+            // Ensure audio context is resumed (browser safety)
+            if (playbackContextRef.current?.state === 'suspended') {
+              playbackContextRef.current.resume();
+            }
+
+            // Trigger initial greeting immediately
+            sessionPromise.then(session => {
+              session.sendClientContent({
+                turns: [{
+                  role: "user",
+                  parts: [{ text: "Please introduce yourself exactly by saying: 'Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help.'" }]
+                }],
+                turnComplete: true
+              });
+            });
 
             // Setup Audio Capture
             audioContextRef.current = new AudioContext({ sampleRate: 16000 });
@@ -318,10 +340,19 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
 
         <div className="relative z-10 flex flex-col items-center max-w-md w-full bg-slate-900/80 p-8 rounded-3xl border border-slate-800 backdrop-blur-xl shadow-2xl">
           {/* Logo Area */}
-          <div className="w-48 h-48 mb-6 relative rounded-full bg-white flex items-center justify-center border-4 border-slate-700 overflow-hidden shadow-xl">
+          <style>{`
+            @keyframes slowFlip {
+              0% { transform: perspective(1000px) rotateY(-180deg); opacity: 0; }
+              100% { transform: perspective(1000px) rotateY(0deg); opacity: 1; }
+            }
+          `}</style>
+          <div 
+            className="w-48 h-48 mb-6 relative rounded-full bg-white flex items-center justify-center border-4 border-slate-700 overflow-hidden shadow-xl"
+            style={{ animation: 'slowFlip 2s cubic-bezier(0.23, 1, 0.32, 1) forwards', transformStyle: 'preserve-3d' }}
+          >
             <img
               src="/owl-logo.png"
-              alt="OwlTutor Logo"
+              alt="OwlHelp! Logo"
               className="w-full h-full object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -330,12 +361,12 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             />
             <div id="fallback-icon" className="hidden flex-col items-center justify-center text-slate-400 w-full h-full bg-slate-800">
               <BookOpen className="w-12 h-12 mb-2 text-indigo-400" />
-              <span className="text-xs font-medium text-center px-4">OwlTutor</span>
+              <span className="text-xs font-medium text-center px-4">OwlHelp!</span>
             </div>
           </div>
 
-          <h1 className="text-3xl font-bold text-white mb-2 text-center tracking-tight">OwlTutor</h1>
-          <p className="text-slate-400 text-center mb-8 text-sm leading-relaxed">Your Virtual Learning Buddy is ready to help you with your math homework!</p>
+          <h1 className="text-3xl font-bold text-white mb-2 text-center tracking-tight">OwlHelp!</h1>
+          <p className="text-slate-400 text-center mb-8 text-sm leading-relaxed">Your Virtual Learning Buddy is ready to help you with your homework!</p>
 
           {permissionError && (
             <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-4 rounded-xl mb-6 text-center w-full">
@@ -352,15 +383,11 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               <Loader2 className="w-6 h-6 animate-spin" />
             ) : (
               <>
-                <Video className="w-5 h-5" />
-                <Mic className="w-5 h-5" />
-                Allow Camera & Mic
+                <Play className="w-5 h-5 fill-current" />
+                Start Learning
               </>
             )}
           </button>
-          <p className="text-slate-500 text-xs text-center mt-6">
-            We need access to see your homework and hear your questions.
-          </p>
         </div>
       </div>
     );
@@ -386,7 +413,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           <div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-lg border-2 border-white/20">
             <img
               src="/owl-logo.png"
-              alt="OwlTutor Logo"
+              alt="OwlHelp! Logo"
               className="w-full h-full object-cover"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
@@ -397,7 +424,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
           </div>
-          <h1 className="text-white font-bold text-xl tracking-tight drop-shadow-md">OwlTutor</h1>
+          <h1 className="text-white font-bold text-xl tracking-tight drop-shadow-md">OwlHelp!</h1>
         </div>
         {isConnected && (
           <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
