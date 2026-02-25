@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
-import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap, BookOpen } from 'lucide-react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -15,6 +15,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 }
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
+  const [permissionError, setPermissionError] = useState<string | null>(null);
+  const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
+
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +46,27 @@ export default function App() {
     isVideoMutedRef.current = isVideoMuted;
   }, [isVideoMuted]);
 
+  const requestPermissions = async () => {
+    setIsRequestingPermissions(true);
+    setPermissionError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
+      streamRef.current = stream;
+      setShowSplash(false);
+    } catch (err) {
+      console.error("Permission error:", err);
+      setPermissionError("We need camera and microphone access to see your homework and hear your questions. Please allow access in your browser settings.");
+    } finally {
+      setIsRequestingPermissions(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!showSplash && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [showSplash]);
+
   const stopSession = useCallback(() => {
     if (sessionRef.current) {
       sessionRef.current.close();
@@ -63,13 +88,8 @@ export default function App() {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
     }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
+    // We intentionally DO NOT stop the media stream tracks here
+    // so the camera preview stays active between sessions.
     setIsConnected(false);
     setIsConnecting(false);
     setWhiteboardItems([]);
@@ -80,11 +100,14 @@ export default function App() {
       setError(null);
       setIsConnecting(true);
 
-      // 1. Get Media Stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+      // 1. Get Media Stream (use existing if available)
+      let stream = streamRef.current;
+      if (!stream || stream.getTracks().every(t => t.readyState === 'ended')) {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
       }
 
       // 2. Setup Audio Playback
@@ -99,7 +122,7 @@ export default function App() {
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
           },
-          systemInstruction: `Role: You are "The Canvas Tutor," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
+          systemInstruction: `Role: You are "OwlTutor," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
 
 Capabilities: You have vision. The user will show you their handwritten or printed math problems via their camera. You must pay close attention to exactly what they are pointing at or writing.
 
@@ -140,7 +163,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
 
             // Setup Audio Capture
             audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-            const source = audioContextRef.current.createMediaStreamSource(stream);
+            const source = audioContextRef.current.createMediaStreamSource(stream!);
             const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
             processorRef.current = processor;
             source.connect(processor);
@@ -280,8 +303,68 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
   useEffect(() => {
     return () => {
       stopSession();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
   }, [stopSession]);
+
+  if (showSplash) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+        {/* Decorative background elements */}
+        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl" />
+
+        <div className="relative z-10 flex flex-col items-center max-w-md w-full bg-slate-900/80 p-8 rounded-3xl border border-slate-800 backdrop-blur-xl shadow-2xl">
+          {/* Logo Area */}
+          <div className="w-48 h-48 mb-6 relative rounded-full bg-white flex items-center justify-center border-4 border-slate-700 overflow-hidden shadow-xl">
+            <img
+              src="/owl-logo.png"
+              alt="OwlTutor Logo"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                document.getElementById('fallback-icon')!.style.display = 'flex';
+              }}
+            />
+            <div id="fallback-icon" className="hidden flex-col items-center justify-center text-slate-400 w-full h-full bg-slate-800">
+              <BookOpen className="w-12 h-12 mb-2 text-indigo-400" />
+              <span className="text-xs font-medium text-center px-4">OwlTutor</span>
+            </div>
+          </div>
+
+          <h1 className="text-3xl font-bold text-white mb-2 text-center tracking-tight">OwlTutor</h1>
+          <p className="text-slate-400 text-center mb-8 text-sm leading-relaxed">Your Virtual Learning Buddy is ready to help you with your math homework!</p>
+
+          {permissionError && (
+            <div className="bg-red-500/10 border border-red-500/50 text-red-400 text-sm p-4 rounded-xl mb-6 text-center w-full">
+              {permissionError}
+            </div>
+          )}
+
+          <button
+            onClick={requestPermissions}
+            disabled={isRequestingPermissions}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800 disabled:text-indigo-300 text-white font-semibold py-4 px-6 rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg flex items-center justify-center gap-3"
+          >
+            {isRequestingPermissions ? (
+              <Loader2 className="w-6 h-6 animate-spin" />
+            ) : (
+              <>
+                <Video className="w-5 h-5" />
+                <Mic className="w-5 h-5" />
+                Allow Camera & Mic
+              </>
+            )}
+          </button>
+          <p className="text-slate-500 text-xs text-center mt-6">
+            We need access to see your homework and hear your questions.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex flex-col font-sans">
@@ -299,11 +382,22 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
 
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 pointer-events-none">
-        <div className="flex items-center gap-2">
-          <div className="bg-indigo-600 p-2 rounded-xl shadow-lg">
-            <GraduationCap className="w-6 h-6 text-white" />
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-lg border-2 border-white/20">
+            <img
+              src="/owl-logo.png"
+              alt="OwlTutor Logo"
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none';
+                document.getElementById('fallback-header-icon')!.style.display = 'flex';
+              }}
+            />
+            <div id="fallback-header-icon" className="hidden w-full h-full bg-indigo-600 items-center justify-center">
+              <GraduationCap className="w-5 h-5 text-white" />
+            </div>
           </div>
-          <h1 className="text-white font-bold text-xl tracking-tight drop-shadow-md">The Canvas Tutor</h1>
+          <h1 className="text-white font-bold text-xl tracking-tight drop-shadow-md">OwlTutor</h1>
         </div>
         {isConnected && (
           <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
