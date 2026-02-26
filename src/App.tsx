@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
-import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap, BookOpen } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap, BookOpen, Settings, X, Eraser } from 'lucide-react';
+import Markdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import remarkGfm from 'remark-gfm';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -16,6 +21,8 @@ function arrayBufferToBase64(buffer: ArrayBuffer) {
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [selectedVoice, setSelectedVoice] = useState('Puck');
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
 
@@ -23,7 +30,7 @@ export default function App() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [whiteboardItems, setWhiteboardItems] = useState<{text: string}[]>([]);
-  const [isMicMuted, setIsMicMuted] = useState(false);
+  const [isMicMuted, setIsMicMuted] = useState(true);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -34,16 +41,28 @@ export default function App() {
   const nextPlayTimeRef = useRef<number>(0);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const videoIntervalRef = useRef<number | null>(null);
+  const isFirstTurnRef = useRef(true);
+  const hasReceivedContentRef = useRef(false);
 
   const isMicMutedRef = useRef(isMicMuted);
   const isVideoMutedRef = useRef(isVideoMuted);
 
   useEffect(() => {
     isMicMutedRef.current = isMicMuted;
+    if (streamRef.current) {
+      streamRef.current.getAudioTracks().forEach(track => {
+        track.enabled = !isMicMuted;
+      });
+    }
   }, [isMicMuted]);
 
   useEffect(() => {
     isVideoMutedRef.current = isVideoMuted;
+    if (streamRef.current) {
+      streamRef.current.getVideoTracks().forEach(track => {
+        track.enabled = !isVideoMuted;
+      });
+    }
   }, [isVideoMuted]);
 
   const requestPermissions = async () => {
@@ -90,8 +109,16 @@ export default function App() {
       clearInterval(videoIntervalRef.current);
       videoIntervalRef.current = null;
     }
-    // We intentionally DO NOT stop the media stream tracks here
-    // so the camera preview stays active between sessions.
+    
+    // Stop the camera and mic tracks to turn off the indicators
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
     setIsConnected(false);
     setIsConnecting(false);
     setWhiteboardItems([]);
@@ -101,6 +128,9 @@ export default function App() {
     try {
       setError(null);
       setIsConnecting(true);
+      setIsMicMuted(true);
+      isFirstTurnRef.current = true;
+      hasReceivedContentRef.current = false;
 
       // 1. Get Media Stream (use existing if available)
       let stream = streamRef.current;
@@ -122,7 +152,7 @@ export default function App() {
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
           },
           systemInstruction: `Role: You are "OwlHelp!," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
 
@@ -133,27 +163,38 @@ Capabilities:
 Initial Greeting: When the session starts, you will receive a prompt to introduce yourself. You MUST say exactly: "Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help."
 
 Strict Rules of Engagement:
-1. Never Give the Final Answer: Under no circumstances should you just solve the problem for them.
-2. Be the Guide: Use the Socratic method. Ask guiding questions to lead the student to the next step.
-3. Acknowledge the Visuals: Explicitly state what you see so the student knows you are looking at their work. (e.g., "I see you are pointing at the denominator in that fraction.")
-4. Catch Mistakes Live: If the student writes down a wrong number or makes a sign error (like dropping a negative sign), politely interrupt and point it out immediately.
-5. Keep Responses Conversational: Keep your audio responses short, conversational, and natural. Do not lecture for long periods. Pause and let the student respond.
-6. Scaffold Learning: Break down complex problems into small, simple steps.
-7. Use Analogies: Explain difficult concepts using relatable examples (e.g., 'fractions are like slices of pizza').
-8. Positive Reinforcement: Use emojis and encouraging phrases like 'Great start!' or 'You're almost there!'.
-9. Refocus: If the student gets off-topic, gently steer them back to their schoolwork.
-10. Safety: Never ask for or store personal information about the child.
+1. NEVER Give the Final Answer: You must never provide the solution to a problem. Even if you think the student knows it, you must wait for them to explicitly state or write it. If you are tempted to say the answer, ask a guiding question instead.
+2. Explicit Verification: Verification means the student has clearly and unambiguously provided the final answer. If there is any doubt, ask: "What do you think the final answer is?" or "Can you write the final result for me?" Only after this explicit confirmation can you say, "That's correct!" or "You got it!".
+3. No Spoilers: Do not hint at the final answer or jump ahead. Focus entirely on the current micro-step the student is working on.
+4. Handle Ambiguity: If you are unsure what the student is writing or saying, DO NOT GUESS. Do not assume they have the right answer if the camera is blurry or the audio is unclear. Instead, ask the student to clarify, point more clearly, or repeat themselves.
+5. Never Let the User Give Up: If a student is frustrated or wants to quit, provide extra encouragement and break the problem down into even smaller, more manageable micro-steps.
+6. Prioritize Teaching: Your primary mission is to teach the concept. Use numbers, letters, and pictures (via the whiteboard) to assist them in visualizing the logic.
+7. Follow Along with Steps: Recognize when the student is writing intermediate steps. Anticipate them writing steps and follow along as they write.
+8. Keep the Whiteboard Updated: Use the whiteboard to mirror the student's work. Continuously update the whiteboard with the steps they've written so it shows the progression of the problem. Use the writeOnWhiteboard tool frequently.
+9. Be the Guide: Use the Socratic method. Ask guiding questions to lead the student to the next step.
+10. Acknowledge the Visuals: Explicitly state what you see so the student knows you are looking at their work. (e.g., "I see you are pointing at the denominator in that fraction.")
+11. Catch Mistakes Live: If the student writes down a wrong number or makes a sign error, politely interrupt and point it out immediately.
+12. Keep Responses Conversational: Keep your audio responses short, conversational, and natural.
+13. Scaffold Learning: Break down complex problems into small, simple steps.
+14. Use Analogies: Explain difficult concepts using relatable examples.
+15. Positive Reinforcement: Use encouraging phrases like 'Great start!' or 'You're almost there!'.
+16. Refocus: If the student gets off-topic, gently steer them back to their schoolwork.
+17. Safety: Never ask for or store personal information about the child.
+18. Math Formatting: When writing on the whiteboard, ALWAYS use LaTeX formatting for math equations. Use single dollar signs for inline math (e.g., $x=5$) and double dollar signs for block math (e.g., $$ \frac{1}{2} $$). ALWAYS ensure every opening delimiter has a matching closing delimiter. Align the math properly to show work happening on both sides of the equation.
+19. Plain English Explanations: When using the whiteboard, always include a brief explanation in plain English alongside the math equations so the student understands the logic being shown.
+20. Clear the Whiteboard: When moving to a new problem or if the whiteboard gets too cluttered, ALWAYS use the clearFirst: true parameter in the writeOnWhiteboard tool to start fresh.
+21. Minimize Interruptions: Do not interrupt yourself just because the camera moved. Only interrupt if the student explicitly asks a new question or if they make a significant mistake that needs immediate correction. Finish your current thought before addressing minor visual changes.
 
 You can also write on the virtual whiteboard using the writeOnWhiteboard tool to help explain concepts visually.`,
           tools: [{
             functionDeclarations: [
               {
                 name: "writeOnWhiteboard",
-                description: "Writes text or math equations on the virtual whiteboard to help explain the problem visually.",
+                description: "Writes markdown text or math equations on the virtual whiteboard to help explain the problem visually. Use LaTeX for math.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    text: { type: Type.STRING, description: "The text or math equation to write." },
+                    text: { type: Type.STRING, description: "The markdown text or math equation to write. Always wrap math in $ or $$." },
                     clearFirst: { type: Type.BOOLEAN, description: "Whether to clear the whiteboard before writing." }
                   },
                   required: ["text"]
@@ -180,6 +221,16 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                   parts: [{ text: "Please introduce yourself exactly by saying: 'Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help.'" }]
                 }],
                 turnComplete: true
+              });
+              
+              // Also send a tiny bit of silence to kickstart the realtime stream
+              const silence = new Float32Array(16000 * 0.1); // 100ms of silence
+              const pcm16 = new Int16Array(silence.length);
+              session.sendRealtimeInput({
+                media: {
+                  mimeType: "audio/pcm;rate=16000",
+                  data: arrayBufferToBase64(pcm16.buffer)
+                }
               });
             });
 
@@ -241,6 +292,9 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           onmessage: async (message: LiveServerMessage) => {
             // Handle audio output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (message.serverContent?.modelTurn) {
+              hasReceivedContentRef.current = true;
+            }
             if (base64Audio && playbackContextRef.current) {
               const binaryString = atob(base64Audio);
               const bytes = new Uint8Array(binaryString.length);
@@ -271,6 +325,12 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                 playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
                 nextPlayTimeRef.current = playbackContextRef.current.currentTime;
               }
+            }
+
+            // Unmute mic after introduction
+            if (message.serverContent?.turnComplete && isFirstTurnRef.current && hasReceivedContentRef.current) {
+              setIsMicMuted(false);
+              isFirstTurnRef.current = false;
             }
 
             // Handle tool calls
@@ -334,6 +394,70 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
   if (showSplash) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 font-sans relative overflow-hidden">
+        {/* Settings Button */}
+        <button 
+          onClick={() => setShowSettings(true)}
+          className="absolute top-6 right-6 z-50 text-slate-400 hover:text-white transition-colors"
+        >
+          <Settings className="w-8 h-8" />
+        </button>
+
+        {/* Settings Modal */}
+        {showSettings && (
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] p-6">
+            <div className="bg-slate-900 border border-slate-700 text-white rounded-3xl w-full max-w-md p-8 relative max-h-[90vh] overflow-y-auto shadow-2xl">
+              <button 
+                onClick={() => setShowSettings(false)}
+                className="absolute top-6 right-6 text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              
+              <h2 className="text-3xl font-bold mb-6 text-white">Settings</h2>
+              
+              <div className="mb-8">
+                <label className="block text-sm font-semibold text-slate-300 mb-2">AI Voice</label>
+                <select 
+                  value={selectedVoice}
+                  onChange={(e) => setSelectedVoice(e.target.value)}
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                >
+                  <option value="Puck">Puck: Upbeat and energetic</option>
+                  <option value="Charon">Charon: Informative and steady</option>
+                  <option value="Kore">Kore: Firm and authoritative</option>
+                  <option value="Fenrir">Fenrir: Excitable and high-energy</option>
+                  <option value="Aoede">Aoede: Breezy and light</option>
+                  <option value="Leda">Leda: Youthful and friendly</option>
+                  <option value="Orus">Orus: Firm and consistent</option>
+                  <option value="Zephyr">Zephyr: Bright and clear</option>
+                  <option value="Callirrhoe">Callirrhoe: Easy-going and relaxed</option>
+                  <option value="Autonoe">Autonoe: Bright</option>
+                </select>
+              </div>
+
+              <div className="mb-8">
+                <h3 className="text-xl font-bold mb-4 text-white">Instructions</h3>
+                <ul className="space-y-3 text-slate-300 text-sm">
+                  <li><strong>1. Start a Session:</strong> Click "Start Learning" and allow camera/microphone permissions.</li>
+                  <li><strong>2. Show Your Work:</strong> Point your camera at your math problem. The AI can see what you're working on.</li>
+                  <li><strong>3. Talk to OwlHelp!:</strong> Ask questions naturally. The AI will guide you step-by-step without just giving the answer.</li>
+                  <li><strong>4. Use the Whiteboard:</strong> The AI will automatically use the digital whiteboard to show steps, or you can ask it to draw something specific.</li>
+                  <li><strong>5. End Session:</strong> Click the Stop button when you're done to turn off the camera and mic.</li>
+                </ul>
+              </div>
+
+              <div className="mt-12 flex flex-col items-center justify-center border-t border-slate-700 pt-8">
+                <p className="text-xs text-slate-500 mb-4">Version 1.0.0</p>
+                <img 
+                  src="/Schmojologo.jpg" 
+                  alt="SCHMOJO Logo" 
+                  className="w-48 object-contain rounded-lg"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Decorative background elements */}
         <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
         <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl" />
@@ -435,16 +559,22 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
       </div>
 
       {/* Whiteboard Area */}
-      <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-center p-8 mt-16 mb-32 z-10">
-        {whiteboardItems.map((item, i) => (
-          <div 
-            key={i} 
-            className="bg-white/95 backdrop-blur-sm text-slate-900 p-6 rounded-2xl shadow-2xl text-2xl md:text-4xl font-mono mb-4 border border-slate-200 transform transition-all duration-500 ease-out translate-y-0 opacity-100"
-            style={{ animation: 'slideUpFade 0.5s ease-out' }}
-          >
-            {item.text}
-          </div>
-        ))}
+      <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-start p-8 mt-20 mb-32 z-10 overflow-y-auto scrollbar-hide">
+        <div className="w-full max-w-3xl pointer-events-auto">
+          {whiteboardItems.map((item, i) => (
+            <div 
+              key={i} 
+              className="bg-white/95 backdrop-blur-sm text-slate-900 p-6 rounded-2xl shadow-2xl text-xl md:text-3xl mb-6 border border-slate-200 transform transition-all duration-500 ease-out translate-y-0 opacity-100 w-full break-words"
+              style={{ animation: 'slideUpFade 0.5s ease-out' }}
+            >
+              <div className="markdown-body prose prose-slate prose-lg max-w-none overflow-x-auto">
+                <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+                  {item.text}
+                </Markdown>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Error Message */}
@@ -498,6 +628,14 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               }`}
             >
               {isVideoMuted ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+            </button>
+
+            <button
+              onClick={() => setWhiteboardItems([])}
+              className="p-4 rounded-full bg-white/20 text-white hover:bg-white/30 backdrop-blur-md border border-white/10 transition-all"
+              title="Clear Whiteboard"
+            >
+              <Eraser className="w-6 h-6" />
             </button>
           </>
         )}
