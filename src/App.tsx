@@ -70,14 +70,30 @@ export default function App() {
     setPermissionError(null);
     
     // Initialize AudioContext immediately on user gesture to unlock audio on mobile
-    if (!playbackContextRef.current) {
+    if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
       playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
-      // Resume immediately to handle Safari's strict gesture requirements
-      playbackContextRef.current.resume();
     }
-
+    
     try {
+      // Resume immediately to handle strict gesture requirements
+      await playbackContextRef.current.resume();
+
+      // Prime the audio system with a short, nearly silent beep
+      const oscillator = playbackContextRef.current.createOscillator();
+      const gainNode = playbackContextRef.current.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(playbackContextRef.current.destination);
+      gainNode.gain.value = 0.001; 
+      oscillator.start();
+      oscillator.stop(playbackContextRef.current.currentTime + 0.05);
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
+      
+      // Re-resume after getUserMedia to reclaim gesture context if lost during permission prompt
+      if (playbackContextRef.current.state === 'suspended') {
+        await playbackContextRef.current.resume();
+      }
+
       streamRef.current = stream;
       setShowSplash(false);
       // Automatically start the session after permissions are granted
@@ -139,6 +155,7 @@ export default function App() {
       setIsMicMuted(true);
       isFirstTurnRef.current = true;
       hasReceivedContentRef.current = false;
+      setWhiteboardItems([{ text: "Unmute the mic below and say hello when ready." }]);
 
       // 1. Get Media Stream (use existing if available)
       let stream = streamRef.current;
@@ -150,14 +167,18 @@ export default function App() {
         }
       }
 
-      // 2. Setup Audio Playback
+      // 2. Setup Audio Playback & Input Contexts
       if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
         playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
       }
-      
-      if (playbackContextRef.current.state === 'suspended') {
-        await playbackContextRef.current.resume();
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        audioContextRef.current = new AudioContext({ sampleRate: 16000 });
       }
+      
+      await Promise.all([
+        playbackContextRef.current.state === 'suspended' ? playbackContextRef.current.resume() : Promise.resolve(),
+        audioContextRef.current.state === 'suspended' ? audioContextRef.current.resume() : Promise.resolve()
+      ]);
       
       nextPlayTimeRef.current = playbackContextRef.current.currentTime;
 
@@ -228,50 +249,30 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               playbackContextRef.current.resume();
             }
 
-            // Trigger initial greeting immediately
-            sessionPromise.then(session => {
-              session.sendClientContent({
-                turns: [{
-                  role: "user",
-                  parts: [{ text: "Please introduce yourself exactly by saying: 'Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help.'" }]
-                }],
-                turnComplete: true
-              });
-              
-              // Also send a tiny bit of silence to kickstart the realtime stream
-              const silence = new Float32Array(16000 * 0.1); // 100ms of silence
-              const pcm16 = new Int16Array(silence.length);
-              session.sendRealtimeInput({
-                media: {
-                  mimeType: "audio/pcm;rate=16000",
-                  data: arrayBufferToBase64(pcm16.buffer)
-                }
-              });
-            });
-
             // Setup Audio Capture
-            audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-            const source = audioContextRef.current.createMediaStreamSource(stream!);
-            const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
-            processorRef.current = processor;
-            source.connect(processor);
-            processor.connect(audioContextRef.current.destination);
+            if (audioContextRef.current && streamRef.current) {
+              const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+              const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
+              processorRef.current = processor;
+              source.connect(processor);
+              processor.connect(audioContextRef.current.destination);
 
-            processor.onaudioprocess = (e) => {
-              if (isMicMutedRef.current) return;
-              const inputData = e.inputBuffer.getChannelData(0);
-              const pcm16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) {
-                let s = Math.max(-1, Math.min(1, inputData[i]));
-                pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-              }
-              const base64Data = arrayBufferToBase64(pcm16.buffer);
-              sessionPromise.then(session => {
-                session.sendRealtimeInput({
-                  media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+              processor.onaudioprocess = (e) => {
+                if (isMicMutedRef.current) return;
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcm16 = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                  let s = Math.max(-1, Math.min(1, inputData[i]));
+                  pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                }
+                const base64Data = arrayBufferToBase64(pcm16.buffer);
+                sessionPromise.then(session => {
+                  session.sendRealtimeInput({
+                    media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+                  });
                 });
-              });
-            };
+              };
+            }
 
             // Setup Video Capture
             const canvas = document.createElement('canvas');
@@ -306,46 +307,69 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           },
           onmessage: async (message: LiveServerMessage) => {
             // Handle audio output
-            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (message.serverContent?.modelTurn) {
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts) {
               hasReceivedContentRef.current = true;
-            }
-            if (base64Audio && playbackContextRef.current) {
-              const binaryString = atob(base64Audio);
-              const bytes = new Uint8Array(binaryString.length);
-              for (let i = 0; i < binaryString.length; i++) {
-                bytes[i] = binaryString.charCodeAt(i);
-              }
-              const pcm16 = new Int16Array(bytes.buffer);
-              const float32 = new Float32Array(pcm16.length);
-              for (let i = 0; i < pcm16.length; i++) {
-                float32[i] = pcm16[i] / 32768;
-              }
-              const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
-              audioBuffer.getChannelData(0).set(float32);
               
-              const source = playbackContextRef.current.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(playbackContextRef.current.destination);
-              
-              const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
-              source.start(startTime);
-              nextPlayTimeRef.current = startTime + audioBuffer.duration;
+              // Ensure audio context is active (crucial for mobile)
+              if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
+                await playbackContextRef.current.resume();
+              }
+
+              for (const part of parts) {
+                const base64Audio = part.inlineData?.data;
+                if (base64Audio && playbackContextRef.current) {
+                  const binaryString = atob(base64Audio);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  const pcm16 = new Int16Array(bytes.buffer);
+                  const float32 = new Float32Array(pcm16.length);
+                  for (let i = 0; i < pcm16.length; i++) {
+                    float32[i] = pcm16[i] / 32768;
+                  }
+
+                  const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
+                  audioBuffer.getChannelData(0).set(float32);
+                  const source = playbackContextRef.current.createBufferSource();
+                  source.buffer = audioBuffer;
+                  source.connect(playbackContextRef.current.destination);
+
+                  const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
+                  source.start(startTime);
+                  nextPlayTimeRef.current = startTime + audioBuffer.duration;
+                }
+              }
             }
 
             // Handle interruption
             if (message.serverContent?.interrupted) {
               if (playbackContextRef.current) {
-                playbackContextRef.current.close();
-                playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
+                // Instead of closing, we can just stop scheduling new audio
+                // and reset the play time. Closing/reopening can be slow.
                 nextPlayTimeRef.current = playbackContextRef.current.currentTime;
               }
             }
 
-            // Unmute mic after introduction
-            if (message.serverContent?.turnComplete && isFirstTurnRef.current && hasReceivedContentRef.current) {
-              setIsMicMuted(false);
-              isFirstTurnRef.current = false;
+            // Unmute mic after introduction or as a fallback
+            if (message.serverContent?.turnComplete && isFirstTurnRef.current) {
+              // If we received content, unmute immediately. 
+              // If not, wait a bit longer just in case, then unmute anyway so the user isn't stuck.
+              if (hasReceivedContentRef.current) {
+                setIsMicMuted(false);
+                isFirstTurnRef.current = false;
+                setWhiteboardItems([]); // Clear initial message after intro
+              } else {
+                // Fallback unmute after 3 seconds if turn completes but no audio was heard
+                setTimeout(() => {
+                  if (isFirstTurnRef.current) {
+                    setIsMicMuted(false);
+                    isFirstTurnRef.current = false;
+                    setWhiteboardItems([]); // Clear initial message even on fallback
+                  }
+                }, 3000);
+              }
             }
 
             // Handle tool calls
@@ -388,6 +412,37 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
         }
       });
       sessionRef.current = await sessionPromise;
+
+      // Trigger initial greeting immediately after session is established
+      if (sessionRef.current) {
+        // Ensure audio context is active
+        if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
+          await playbackContextRef.current.resume();
+        }
+
+        // Send a bit of silence to establish the stream
+        const silence = new Float32Array(16000 * 0.5); 
+        const pcm16 = new Int16Array(silence.length);
+        sessionRef.current.sendRealtimeInput({
+          media: {
+            mimeType: "audio/pcm;rate=16000",
+            data: arrayBufferToBase64(pcm16.buffer)
+          }
+        });
+
+        // Small delay then send the greeting request
+        setTimeout(() => {
+          if (sessionRef.current) {
+            sessionRef.current.sendClientContent({
+              turns: [{
+                role: "user",
+                parts: [{ text: "Hello! Please introduce yourself exactly by saying: 'Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help.'" }]
+              }],
+              turnComplete: true
+            });
+          }
+        }, 500);
+      }
 
     } catch (err: any) {
       console.error("Failed to start session:", err);
