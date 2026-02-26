@@ -68,6 +68,14 @@ export default function App() {
   const requestPermissions = async () => {
     setIsRequestingPermissions(true);
     setPermissionError(null);
+    
+    // Initialize AudioContext immediately on user gesture to unlock audio on mobile
+    if (!playbackContextRef.current) {
+      playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
+      // Resume immediately to handle Safari's strict gesture requirements
+      playbackContextRef.current.resume();
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
       streamRef.current = stream;
@@ -143,7 +151,14 @@ export default function App() {
       }
 
       // 2. Setup Audio Playback
-      playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
+      if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
+        playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
+      }
+      
+      if (playbackContextRef.current.state === 'suspended') {
+        await playbackContextRef.current.resume();
+      }
+      
       nextPlayTimeRef.current = playbackContextRef.current.currentTime;
 
       // 3. Connect to Live API
