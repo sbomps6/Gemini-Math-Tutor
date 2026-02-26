@@ -501,7 +501,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                 <select 
                   value={selectedVoice}
                   onChange={(e) => setSelectedVoice(e.target.value)}
-                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none"
+                  className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
                 >
                   <option value="Puck">Puck: Upbeat and energetic</option>
                   <option value="Charon">Charon: Informative and steady</option>
@@ -540,8 +540,8 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
         )}
 
         {/* Decorative background elements */}
-        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl" />
+        <div className="absolute top-[-10%] left-[-10%] w-96 h-96 bg-sky-500/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-96 h-96 bg-teal-400/20 rounded-full blur-3xl" />
 
         <div className="relative z-10 flex flex-col items-center max-w-md w-full bg-slate-900/80 p-8 rounded-3xl border border-slate-800 backdrop-blur-xl shadow-2xl">
           {/* Logo Area */}
@@ -565,7 +565,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               }}
             />
             <div id="fallback-icon" className="hidden flex-col items-center justify-center text-slate-400 w-full h-full bg-slate-800">
-              <BookOpen className="w-12 h-12 mb-2 text-indigo-400" />
+              <BookOpen className="w-12 h-12 mb-2 text-sky-400" />
               <span className="text-xs font-medium text-center px-4">OwlHelp!</span>
             </div>
           </div>
@@ -582,7 +582,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           <button
             onClick={requestPermissions}
             disabled={isRequestingPermissions}
-            className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-800 disabled:text-indigo-300 text-white font-semibold py-4 px-6 rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg flex items-center justify-center gap-3"
+            className="w-full bg-amber-400 hover:bg-amber-500 disabled:bg-slate-800 disabled:text-slate-500 text-slate-900 font-bold py-4 px-6 rounded-2xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg flex items-center justify-center gap-3"
           >
             {isRequestingPermissions ? (
               <Loader2 className="w-6 h-6 animate-spin" />
@@ -625,7 +625,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                 document.getElementById('fallback-header-icon')!.style.display = 'flex';
               }}
             />
-            <div id="fallback-header-icon" className="hidden w-full h-full bg-indigo-600 items-center justify-center">
+            <div id="fallback-header-icon" className="hidden w-full h-full bg-sky-600 items-center justify-center">
               <GraduationCap className="w-5 h-5 text-white" />
             </div>
           </div>
