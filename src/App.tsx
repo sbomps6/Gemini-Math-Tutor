@@ -196,7 +196,7 @@ Capabilities:
 - Vision: You can see the user's handwritten or printed math problems via their camera. Pay close attention to exactly what they are pointing at or writing.
 - Whiteboard: You have a digital whiteboard. You can use the "writeOnWhiteboard" tool to draw diagrams, write equations, or explain concepts visually if the student needs extra help.
 
-Initial Greeting: When the session starts, you will receive a prompt to introduce yourself. You MUST say exactly: "Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help."
+Initial Greeting: When the session starts, the user will send a message saying "Session started." You MUST immediately respond by introducing yourself. You MUST say exactly: "Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help." Do not wait for the user to speak.
 
 Strict Rules of Engagement:
 1. NEVER Give the Final Answer: You must never provide the solution to a problem. Even if you think the student knows it, you must wait for them to explicitly state or write it. If you are tempted to say the answer, ask a guiding question instead.
@@ -259,12 +259,15 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
 
               processor.onaudioprocess = (e) => {
                 if (isMicMutedRef.current) return;
+                
                 const inputData = e.inputBuffer.getChannelData(0);
                 const pcm16 = new Int16Array(inputData.length);
+                
                 for (let i = 0; i < inputData.length; i++) {
                   let s = Math.max(-1, Math.min(1, inputData[i]));
                   pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                 }
+                
                 const base64Data = arrayBufferToBase64(pcm16.buffer);
                 sessionPromise.then(session => {
                   session.sendRealtimeInput({
@@ -306,6 +309,45 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             }, 1000); // 1 FPS
           },
           onmessage: async (message: LiveServerMessage) => {
+            // Trigger initial greeting when setup is complete
+            if (message.setupComplete) {
+              sessionPromise.then(async session => {
+                // Ensure audio context is active
+                if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
+                  await playbackContextRef.current.resume();
+                }
+
+                // Play a local chime to indicate readiness and wake up the audio context
+                if (playbackContextRef.current) {
+                  const sampleRate = playbackContextRef.current.sampleRate;
+                  const duration = 0.4;
+                  const length = Math.floor(sampleRate * duration);
+                  const audioBuffer = playbackContextRef.current.createBuffer(1, length, sampleRate);
+                  const channelData = audioBuffer.getChannelData(0);
+                  for (let i = 0; i < length; i++) {
+                    const t = i / sampleRate;
+                    const envelope = Math.exp(-t * 10);
+                    channelData[i] = Math.sin(2 * Math.PI * 880 * t) * envelope * 0.3;
+                  }
+                  const source = playbackContextRef.current.createBufferSource();
+                  source.buffer = audioBuffer;
+                  source.connect(playbackContextRef.current.destination);
+                  source.start();
+                }
+
+                // Small delay then send the greeting request
+                setTimeout(() => {
+                  session.sendClientContent({
+                    turns: [{
+                      role: "user",
+                      parts: [{ text: "Session started." }]
+                    }],
+                    turnComplete: true
+                  });
+                }, 500);
+              });
+            }
+
             // Handle audio output
             const parts = message.serverContent?.modelTurn?.parts;
             if (parts) {
@@ -412,37 +454,6 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
         }
       });
       sessionRef.current = await sessionPromise;
-
-      // Trigger initial greeting immediately after session is established
-      if (sessionRef.current) {
-        // Ensure audio context is active
-        if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
-          await playbackContextRef.current.resume();
-        }
-
-        // Send a bit of silence to establish the stream
-        const silence = new Float32Array(16000 * 0.5); 
-        const pcm16 = new Int16Array(silence.length);
-        sessionRef.current.sendRealtimeInput({
-          media: {
-            mimeType: "audio/pcm;rate=16000",
-            data: arrayBufferToBase64(pcm16.buffer)
-          }
-        });
-
-        // Small delay then send the greeting request
-        setTimeout(() => {
-          if (sessionRef.current) {
-            sessionRef.current.sendClientContent({
-              turns: [{
-                role: "user",
-                parts: [{ text: "Hello! Please introduce yourself exactly by saying: 'Welcome to OwlHelp!, your virtual tutor. How can I help you today? If you have a problem to work on, just point the camera there, and let's get started. You can also ask to use a whiteboard if you need some extra help.'" }]
-              }],
-              turnComplete: true
-            });
-          }
-        }, 500);
-      }
 
     } catch (err: any) {
       console.error("Failed to start session:", err);
