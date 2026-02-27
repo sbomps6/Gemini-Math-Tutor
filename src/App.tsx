@@ -1,11 +1,85 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Type } from '@google/genai';
-import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap, BookOpen, Settings, X, Eraser } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, Play, Square, Loader2, GraduationCap, BookOpen, Settings, X, Eraser, Minimize2, Maximize2, Download, Volume2, VolumeX } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import remarkGfm from 'remark-gfm';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import mermaid from 'mermaid';
+
+mermaid.initialize({ 
+  startOnLoad: false, 
+  theme: 'neutral',
+  securityLevel: 'loose',
+  fontFamily: 'Inter, system-ui, sans-serif',
+  flowchart: {
+    useMaxWidth: true,
+    htmlLabels: true,
+    curve: 'basis',
+    padding: 20
+  },
+  themeVariables: {
+    fontSize: '16px'
+  }
+});
+
+const MermaidChart = ({ chart }: { chart: string }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const [svg, setSvg] = useState<string>('');
+  const [renderError, setRenderError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (chart) {
+      setRenderError(false);
+      const id = `mermaid-${Math.random().toString(36).substr(2, 9)}`;
+      
+      // Small delay to ensure DOM is ready and avoid race conditions on mobile
+      const timer = setTimeout(() => {
+        mermaid.render(id, chart)
+          .then((result) => {
+            if (isMounted) setSvg(result.svg);
+          })
+          .catch(e => {
+            console.error('Mermaid render error:', e);
+            if (isMounted) setRenderError(true);
+            // Mermaid sometimes leaves error SVGs in the DOM on failure
+            const errorSvg = document.getElementById(id);
+            if (errorSvg) errorSvg.remove();
+            const errorSvg2 = document.getElementById('d' + id);
+            if (errorSvg2) errorSvg2.remove();
+            // Clean up any other orphaned error SVGs
+            document.querySelectorAll('svg[id^="dmermaid-"]').forEach(el => el.remove());
+            document.querySelectorAll('svg[id^="mermaid-"]').forEach(el => el.remove());
+          });
+      }, 50);
+
+      return () => {
+        isMounted = false;
+        clearTimeout(timer);
+      };
+    }
+  }, [chart]);
+
+  if (renderError) {
+    return (
+      <div className="p-4 bg-slate-100 rounded-lg text-xs font-mono text-slate-500 my-4 overflow-x-auto border border-slate-200">
+        <div className="font-bold mb-2 text-slate-400 uppercase tracking-wider text-[10px]">Diagram Render Error</div>
+        <pre className="whitespace-pre-wrap">{chart}</pre>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      key={chart}
+      ref={ref} 
+      dangerouslySetInnerHTML={{ __html: svg }} 
+      className="flex justify-center my-4 overflow-x-auto w-full mermaid-container bg-white/50 rounded-xl p-2 min-h-[100px]" 
+    />
+  );
+};
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -28,23 +102,40 @@ export default function App() {
 
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [whiteboardItems, setWhiteboardItems] = useState<{text: string}[]>([]);
+  const [isWhiteboardMinimized, setIsWhiteboardMinimized] = useState(false);
   const [isMicMuted, setIsMicMuted] = useState(true);
   const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const [volume, setVolume] = useState(1);
+  const [showScrollHint, setShowScrollHint] = useState(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const whiteboardScrollRef = useRef<HTMLDivElement>(null);
+  const isUserScrollingRef = useRef(false);
+  const lastUserInteractionRef = useRef(0);
   const streamRef = useRef<MediaStream | null>(null);
   const sessionRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
   const videoIntervalRef = useRef<number | null>(null);
   const isFirstTurnRef = useRef(true);
   const hasReceivedContentRef = useRef(false);
-
   const isMicMutedRef = useRef(isMicMuted);
+
+  const markdownComponents = useMemo(() => ({
+    code({node, inline, className, children, ...props}: any) {
+      const match = /language-(\w+)/.exec(className || '');
+      if (match && match[1] === 'mermaid') {
+        return <MermaidChart chart={String(children).replace(/\n$/, '')} />;
+      }
+      return <code className={className} {...props}>{children}</code>;
+    }
+  }), []);
   const isVideoMutedRef = useRef(isVideoMuted);
 
   useEffect(() => {
@@ -65,27 +156,108 @@ export default function App() {
     }
   }, [isVideoMuted]);
 
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = volume;
+    }
+  }, [volume]);
+
+  const handleScroll = useCallback(() => {
+    if (whiteboardScrollRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = whiteboardScrollRef.current;
+      // Use a slightly larger threshold for mobile
+      const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
+      setShowScrollHint(!isAtBottom && scrollHeight > clientHeight + 50);
+      
+      // If we are scrolling and it's been less than 1500ms since last touch/mouse down,
+      // consider it a user-initiated scroll (including momentum)
+      if (Date.now() - lastUserInteractionRef.current < 1500) {
+        isUserScrollingRef.current = true;
+      } else {
+        isUserScrollingRef.current = false;
+      }
+    }
+  }, []);
+
+  // Auto-scroll whiteboard and handle scroll hints
+  useEffect(() => {
+    if (whiteboardScrollRef.current && whiteboardItems.length > 0) {
+      const el = whiteboardScrollRef.current;
+      const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 10;
+      
+      const timer = setTimeout(() => {
+        const isInteracting = Date.now() - lastUserInteractionRef.current < 2000;
+        if (isNearBottom && !isInteracting && !isUserScrollingRef.current) {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        }
+        handleScroll();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [whiteboardItems, handleScroll]);
+
+  // Handle resize of content (like mermaid charts loading)
+  useEffect(() => {
+    if (!whiteboardScrollRef.current) return;
+    
+    const resizeObserver = new ResizeObserver(() => {
+      const el = whiteboardScrollRef.current;
+      if (el) {
+        const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 10;
+        const isInteracting = Date.now() - lastUserInteractionRef.current < 2000;
+        if (isNearBottom && !isInteracting && !isUserScrollingRef.current) {
+          el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+        }
+        handleScroll();
+      }
+    });
+
+    const content = whiteboardScrollRef.current.firstElementChild;
+    if (content) resizeObserver.observe(content);
+    
+    return () => resizeObserver.disconnect();
+  }, [handleScroll]);
+
+  const initPlaybackContext = useCallback(() => {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
+      try {
+        playbackContextRef.current = new AudioContextClass({ sampleRate: 24000 });
+      } catch (e) {
+        playbackContextRef.current = new AudioContextClass();
+      }
+    }
+    
+    if (playbackContextRef.current && (!gainNodeRef.current || gainNodeRef.current.context !== playbackContextRef.current)) {
+      gainNodeRef.current = playbackContextRef.current.createGain();
+      gainNodeRef.current.connect(playbackContextRef.current.destination);
+      gainNodeRef.current.gain.value = volume;
+    }
+    
+    return playbackContextRef.current;
+  }, [volume]);
+
   const requestPermissions = async () => {
     setIsRequestingPermissions(true);
     setPermissionError(null);
     
     // Initialize AudioContext immediately on user gesture to unlock audio on mobile
-    if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
-      playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
-    }
+    const context = initPlaybackContext();
     
     try {
       // Resume immediately to handle strict gesture requirements
-      await playbackContextRef.current.resume();
+      if (context) await context.resume();
 
       // Prime the audio system with a short, nearly silent beep
-      const oscillator = playbackContextRef.current.createOscillator();
-      const gainNode = playbackContextRef.current.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(playbackContextRef.current.destination);
-      gainNode.gain.value = 0.001; 
-      oscillator.start();
-      oscillator.stop(playbackContextRef.current.currentTime + 0.05);
+      if (context && gainNodeRef.current) {
+        const oscillator = context.createOscillator();
+        const gainNode = context.createGain();
+        oscillator.connect(gainNode);
+        gainNode.connect(gainNodeRef.current);
+        gainNode.gain.value = 0.001; 
+        oscillator.start();
+        oscillator.stop(context.currentTime + 0.05);
+      }
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
       
@@ -148,6 +320,20 @@ export default function App() {
     setWhiteboardItems([]);
   }, []);
 
+  const downloadNotes = useCallback(() => {
+    if (whiteboardItems.length === 0) return;
+    const content = whiteboardItems.map(item => item.text).join('\n\n---\n\n');
+    const blob = new Blob([content], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `owlhelp-notes-${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [whiteboardItems]);
+
   const startSession = async () => {
     try {
       setError(null);
@@ -157,7 +343,27 @@ export default function App() {
       hasReceivedContentRef.current = false;
       setWhiteboardItems([{ text: "Unmute the mic below and say hello when ready." }]);
 
-      // 1. Get Media Stream (use existing if available)
+      // 1. Setup Audio Playback & Input Contexts IMMEDIATELY on user gesture
+      const context = initPlaybackContext();
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        try {
+          audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
+        } catch (e) {
+          audioContextRef.current = new AudioContextClass(); // Fallback for older Safari
+        }
+      }
+      
+      // Resume immediately to unlock audio on iOS/Safari
+      if (context && context.state === 'suspended') {
+        context.resume();
+      }
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        audioContextRef.current.resume();
+      }
+
+      // 2. Get Media Stream (use existing if available)
       let stream = streamRef.current;
       if (!stream || stream.getTracks().every(t => t.readyState === 'ended')) {
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: { facingMode: 'environment' } });
@@ -166,19 +372,6 @@ export default function App() {
           videoRef.current.srcObject = stream;
         }
       }
-
-      // 2. Setup Audio Playback & Input Contexts
-      if (!playbackContextRef.current || playbackContextRef.current.state === 'closed') {
-        playbackContextRef.current = new AudioContext({ sampleRate: 24000 });
-      }
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        audioContextRef.current = new AudioContext({ sampleRate: 16000 });
-      }
-      
-      await Promise.all([
-        playbackContextRef.current.state === 'suspended' ? playbackContextRef.current.resume() : Promise.resolve(),
-        audioContextRef.current.state === 'suspended' ? audioContextRef.current.resume() : Promise.resolve()
-      ]);
       
       nextPlayTimeRef.current = playbackContextRef.current.currentTime;
 
@@ -220,20 +413,43 @@ Strict Rules of Engagement:
 19. Plain English Explanations: When using the whiteboard, always include a brief explanation in plain English alongside the math equations so the student understands the logic being shown.
 20. Clear the Whiteboard: When moving to a new problem or if the whiteboard gets too cluttered, ALWAYS use the clearFirst: true parameter in the writeOnWhiteboard tool to start fresh.
 21. Minimize Interruptions: Do not interrupt yourself just because the camera moved. Only interrupt if the student explicitly asks a new question or if they make a significant mistake that needs immediate correction. Finish your current thought before addressing minor visual changes.
+22. Diagram Support: You can draw diagrams, flowcharts, number lines, and geometric shapes on the whiteboard using Mermaid.js. To do this, use the 'mermaidCode' parameter in the writeOnWhiteboard tool.
+    - CRITICAL: Pass ONLY the raw Mermaid code in the 'mermaidCode' parameter. Do NOT wrap it in markdown backticks. Do NOT put text in this parameter.
+    - CRITICAL: You MUST NOT combine different diagram types (e.g., 'pie' and 'graph TD') in a single tool call. If you need both, make two separate calls.
+    - For Number Lines (e.g., x=4): Use 'graph LR' with nodes for each number. Use double parentheses '(( ))' for the target point to make it a circle.
+      Example: graph LR\nn1[-1]---n2[0]---n3[1]---n4[2]---n5[3]---n6((4))---n7[5]\nstyle n6 fill:#fbbf24,stroke:#b45309,stroke-width:4px
+    - For Geometric Shapes: Use 'graph TD' or 'graph LR' with custom node shapes.
+      - Circle: node1((Text))
+      - Square: node1[Text]
+      - Rhombus: node1{Text}
+      - Triangle-ish: node1>Text]
+      - Cylinder: node1[(Text)] (This is the ONLY way to draw a cylinder)
+      Example: graph TD\nc1[(Cylinder)]
+    - For Pie Charts: Use 'pie' syntax. Each data point MUST be on a new line. The title MUST be on a single line.
+      Example: pie title Pets\n"Dogs" : 386\n"Cats" : 85
+    - For Flowcharts: Use 'graph TD' or 'graph LR'.
+    - ALWAYS ensure the Mermaid code is valid and follows the specific syntax for each type.
+23. Double Check Your Work: Always double-check your own math and logic internally before speaking or writing it on the whiteboard to ensure it is 100% correct prior to showing the student.
 
-You can also write on the virtual whiteboard using the writeOnWhiteboard tool to help explain concepts visually.`,
+You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, chart, or long explanation. Do not just speak it.`,
           tools: [{
             functionDeclarations: [
               {
                 name: "writeOnWhiteboard",
-                description: "Writes markdown text or math equations on the virtual whiteboard to help explain the problem visually. Use LaTeX for math.",
+                description: "Writes markdown text, math equations, or Mermaid.js diagrams on the virtual whiteboard.",
                 parameters: {
                   type: Type.OBJECT,
                   properties: {
-                    text: { type: Type.STRING, description: "The markdown text or math equation to write. Always wrap math in $ or $$." },
+                    text: { 
+                      type: Type.STRING, 
+                      description: "The markdown text or math equation to write. Always wrap math in $ or $$." 
+                    },
+                    mermaidCode: { 
+                      type: Type.STRING, 
+                      description: "The raw Mermaid.js code to draw a diagram. Do NOT wrap in backticks. Do NOT include markdown. Just the raw mermaid code." 
+                    },
                     clearFirst: { type: Type.BOOLEAN, description: "Whether to clear the whiteboard before writing." }
-                  },
-                  required: ["text"]
+                  }
                 }
               }
             ]
@@ -249,6 +465,37 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               playbackContextRef.current.resume();
             }
 
+            // Play a local chime to indicate readiness and wake up the audio context
+            if (playbackContextRef.current) {
+              const sampleRate = playbackContextRef.current.sampleRate;
+              const duration = 0.4;
+              const length = Math.floor(sampleRate * duration);
+              const audioBuffer = playbackContextRef.current.createBuffer(1, length, sampleRate);
+              const channelData = audioBuffer.getChannelData(0);
+              for (let i = 0; i < length; i++) {
+                const t = i / sampleRate;
+                const envelope = Math.exp(-t * 10);
+                channelData[i] = Math.sin(2 * Math.PI * 880 * t) * envelope * 0.3;
+              }
+              const source = playbackContextRef.current.createBufferSource();
+              source.buffer = audioBuffer;
+              source.connect(playbackContextRef.current.destination);
+              source.start();
+            }
+
+            sessionPromise.then(session => {
+              // Small delay then send the greeting request
+              setTimeout(() => {
+                session.sendClientContent({
+                  turns: [{
+                    role: "user",
+                    parts: [{ text: "Session started." }]
+                  }],
+                  turnComplete: true
+                });
+              }, 500);
+            });
+
             // Setup Audio Capture
             if (audioContextRef.current && streamRef.current) {
               const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
@@ -261,11 +508,25 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                 if (isMicMutedRef.current) return;
                 
                 const inputData = e.inputBuffer.getChannelData(0);
-                const pcm16 = new Int16Array(inputData.length);
-                
-                for (let i = 0; i < inputData.length; i++) {
-                  let s = Math.max(-1, Math.min(1, inputData[i]));
-                  pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                const sampleRate = audioContextRef.current?.sampleRate || 16000;
+                let pcm16: Int16Array;
+
+                if (sampleRate === 16000) {
+                  pcm16 = new Int16Array(inputData.length);
+                  for (let i = 0; i < inputData.length; i++) {
+                    let s = Math.max(-1, Math.min(1, inputData[i]));
+                    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                  }
+                } else {
+                  // Simple nearest-neighbor downsampling
+                  const ratio = sampleRate / 16000;
+                  const newLength = Math.floor(inputData.length / ratio);
+                  pcm16 = new Int16Array(newLength);
+                  for (let i = 0; i < newLength; i++) {
+                    const index = Math.floor(i * ratio);
+                    let s = Math.max(-1, Math.min(1, inputData[index]));
+                    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                  }
                 }
                 
                 const base64Data = arrayBufferToBase64(pcm16.buffer);
@@ -309,45 +570,6 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             }, 1000); // 1 FPS
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Trigger initial greeting when setup is complete
-            if (message.setupComplete) {
-              sessionPromise.then(async session => {
-                // Ensure audio context is active
-                if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
-                  await playbackContextRef.current.resume();
-                }
-
-                // Play a local chime to indicate readiness and wake up the audio context
-                if (playbackContextRef.current) {
-                  const sampleRate = playbackContextRef.current.sampleRate;
-                  const duration = 0.4;
-                  const length = Math.floor(sampleRate * duration);
-                  const audioBuffer = playbackContextRef.current.createBuffer(1, length, sampleRate);
-                  const channelData = audioBuffer.getChannelData(0);
-                  for (let i = 0; i < length; i++) {
-                    const t = i / sampleRate;
-                    const envelope = Math.exp(-t * 10);
-                    channelData[i] = Math.sin(2 * Math.PI * 880 * t) * envelope * 0.3;
-                  }
-                  const source = playbackContextRef.current.createBufferSource();
-                  source.buffer = audioBuffer;
-                  source.connect(playbackContextRef.current.destination);
-                  source.start();
-                }
-
-                // Small delay then send the greeting request
-                setTimeout(() => {
-                  session.sendClientContent({
-                    turns: [{
-                      role: "user",
-                      parts: [{ text: "Session started." }]
-                    }],
-                    turnComplete: true
-                  });
-                }, 500);
-              });
-            }
-
             // Handle audio output
             const parts = message.serverContent?.modelTurn?.parts;
             if (parts) {
@@ -362,8 +584,10 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                 const base64Audio = part.inlineData?.data;
                 if (base64Audio && playbackContextRef.current) {
                   const binaryString = atob(base64Audio);
-                  const bytes = new Uint8Array(binaryString.length);
-                  for (let i = 0; i < binaryString.length; i++) {
+                  // Ensure even length for Int16Array
+                  const validLength = binaryString.length % 2 === 0 ? binaryString.length : binaryString.length - 1;
+                  const bytes = new Uint8Array(validLength);
+                  for (let i = 0; i < validLength; i++) {
                     bytes[i] = binaryString.charCodeAt(i);
                   }
                   const pcm16 = new Int16Array(bytes.buffer);
@@ -372,15 +596,22 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
                     float32[i] = pcm16[i] / 32768;
                   }
 
-                  const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
-                  audioBuffer.getChannelData(0).set(float32);
-                  const source = playbackContextRef.current.createBufferSource();
-                  source.buffer = audioBuffer;
-                  source.connect(playbackContextRef.current.destination);
+                  if (float32.length > 0) {
+                    const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
+                    audioBuffer.getChannelData(0).set(float32);
+                    const source = playbackContextRef.current.createBufferSource();
+                    source.buffer = audioBuffer;
+                    
+                    if (gainNodeRef.current) {
+                      source.connect(gainNodeRef.current);
+                    } else {
+                      source.connect(playbackContextRef.current.destination);
+                    }
 
-                  const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
-                  source.start(startTime);
-                  nextPlayTimeRef.current = startTime + audioBuffer.duration;
+                    const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
+                    source.start(startTime);
+                    nextPlayTimeRef.current = startTime + audioBuffer.duration;
+                  }
                 }
               }
             }
@@ -417,12 +648,131 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             // Handle tool calls
             const toolCalls = message.toolCall?.functionCalls;
             if (toolCalls) {
+              setIsThinking(true);
               const responses = toolCalls.map(call => {
                 if (call.name === 'writeOnWhiteboard') {
                   const args = call.args as any;
                   setWhiteboardItems(prev => {
                     const newItems = args.clearFirst ? [] : [...prev];
-                    newItems.push({ text: args.text });
+                    if (args.content) {
+                      let content = args.content;
+                      
+                      // 1. Unescape backticks if the AI escaped them
+                      content = content.replace(/\\`/g, '`');
+                      
+                      // 2. Fix missing backticks for lines starting with "mermaid" or diagram types
+                      const diagramTypes = ['graph', 'pie', 'sequenceDiagram', 'gantt', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gitGraph', 'mindmap', 'timeline'];
+                      const lines = content.split('\n');
+                      const fixedLines = lines.map(line => {
+                        const trimmed = line.trim();
+                        // If it starts with "mermaid " or a diagram type and isn't already in a code block
+                        const startsWithMermaid = trimmed.toLowerCase().startsWith('mermaid ');
+                        const startsWithDiagramType = diagramTypes.some(type => trimmed.toLowerCase().startsWith(type + ' ') || trimmed.toLowerCase() === type);
+                        
+                        if ((startsWithMermaid || startsWithDiagramType) && !content.includes('```')) {
+                          let diagramCode = trimmed;
+                          if (startsWithMermaid) {
+                            diagramCode = trimmed.substring(8).trim();
+                          }
+                          return `\n\`\`\`mermaid\n${diagramCode}\n\`\`\`\n`;
+                        }
+                        return line;
+                      });
+                      content = fixedLines.join('\n');
+
+                      // 3. Fix single-line mermaid blocks and missing newlines
+                      content = content.replace(/```mermaid\s*(.+?)\s*```/gs, (match, p1) => {
+                        let code = p1.trim();
+                        
+                        // Remove redundant 'mermaid' keyword at the start of the block
+                        if (code.toLowerCase().startsWith('mermaid\n') || code.toLowerCase().startsWith('mermaid ')) {
+                          code = code.substring(7).trim();
+                        }
+                        
+                        // Fix pie charts
+                        if (code.startsWith('pie')) {
+                          code = code.replace(/\s+"/g, '\n"');
+                          // Fix multi-line titles by joining everything before the first quote
+                          const firstQuoteIndex = code.indexOf('"');
+                          if (firstQuoteIndex > -1) {
+                            const beforeQuotes = code.substring(0, firstQuoteIndex);
+                            const afterQuotes = code.substring(firstQuoteIndex);
+                            let fixedTitle = beforeQuotes.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                            // Revert: title should be on the same line as pie
+                            if (fixedTitle.startsWith('pie\ntitle ')) {
+                              fixedTitle = fixedTitle.replace('pie\ntitle ', 'pie title ');
+                            }
+                            code = fixedTitle + '\n' + afterQuotes;
+                          }
+                        }
+                        
+                        // Fix graphs
+                        if (code.startsWith('graph TD') || code.startsWith('graph LR')) {
+                          // Replace semicolons with newlines
+                          code = code.replace(/;/g, '\n');
+                          // Ensure graph declaration is on its own line
+                          code = code.replace(/^(graph (TD|LR))\s+/, '$1\n');
+                        }
+                        
+                        return `\n\`\`\`mermaid\n${code}\n\`\`\`\n`;
+                      });
+
+                      // 4. Ensure mermaid blocks have newlines around them for better parsing
+                      const formattedContent = content
+                        .replace(/([^\n])\s*```mermaid/g, '$1\n\n```mermaid')
+                        .replace(/```\s*([^\n])/g, '```\n\n$1');
+                      
+                      newItems.push({ text: formattedContent });
+                    } else if (args.text || args.mermaidCode) {
+                      let content = "";
+                      
+                      if (args.text) {
+                        content += args.text + "\n\n";
+                      }
+                      
+                      if (args.mermaidCode) {
+                        let code = args.mermaidCode.trim();
+                        
+                        // Remove backticks if the AI accidentally included them
+                        code = code.replace(/```mermaid/g, '').replace(/```/g, '').trim();
+                        
+                        // Remove redundant 'mermaid' keyword
+                        if (code.toLowerCase().startsWith('mermaid\n') || code.toLowerCase().startsWith('mermaid ')) {
+                          code = code.substring(7).trim();
+                        }
+                        
+                        // Fix pie charts
+                        if (code.startsWith('pie')) {
+                          code = code.replace(/\s+"/g, '\n"');
+                          // Fix multi-line titles by joining everything before the first quote
+                          const firstQuoteIndex = code.indexOf('"');
+                          if (firstQuoteIndex > -1) {
+                            const beforeQuotes = code.substring(0, firstQuoteIndex);
+                            const afterQuotes = code.substring(firstQuoteIndex);
+                            let fixedTitle = beforeQuotes.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                            // Revert: title should be on the same line as pie
+                            if (fixedTitle.startsWith('pie\ntitle ')) {
+                              fixedTitle = fixedTitle.replace('pie\ntitle ', 'pie title ');
+                            }
+                            code = fixedTitle + '\n' + afterQuotes;
+                          }
+                        }
+                        
+                        // Fix graphs
+                        if (code.startsWith('graph TD') || code.startsWith('graph LR')) {
+                          // Replace semicolons with newlines
+                          code = code.replace(/;/g, '\n');
+                          // Ensure graph declaration is on its own line
+                          code = code.replace(/^(graph (TD|LR))\s+/, '$1\n');
+                        }
+                        
+                        content += "```mermaid\n" + code + "\n```\n\n";
+                      }
+                      
+                      if (content.trim()) {
+                        newItems.push({ text: content.trim() });
+                      }
+                    }
                     return newItems;
                   });
                   return {
@@ -440,6 +790,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
               
               sessionPromise.then(session => {
                 session.sendToolResponse({ functionResponses: responses });
+                setTimeout(() => setIsThinking(false), 1000);
               });
             }
           },
@@ -558,7 +909,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             <img
               src="/owl-logo.png"
               alt="OwlHelp! Logo"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover translate-x-[1.5px] scale-[1.02]"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 document.getElementById('fallback-icon')!.style.display = 'flex';
@@ -613,13 +964,13 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
       <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/60 pointer-events-none" />
 
       {/* Header */}
-      <div className="absolute top-0 left-0 right-0 p-6 flex justify-between items-center z-10 pointer-events-none">
+      <div className="absolute top-0 left-0 right-0 p-4 md:p-6 flex justify-between items-center z-10 pointer-events-none">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-white overflow-hidden shadow-lg border-2 border-white/20">
             <img
               src="/owl-logo.png"
               alt="OwlHelp! Logo"
-              className="w-full h-full object-cover"
+              className="w-full h-full object-cover translate-x-[0.75px] scale-[1.02]"
               onError={(e) => {
                 e.currentTarget.style.display = 'none';
                 document.getElementById('fallback-header-icon')!.style.display = 'flex';
@@ -632,24 +983,96 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           <h1 className="text-white font-bold text-xl tracking-tight drop-shadow-md">OwlHelp!</h1>
         </div>
         {isConnected && (
-          <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
-            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-emerald-400 text-xs font-medium uppercase tracking-wider">Live</span>
+          <div className="flex items-center gap-3">
+            {isThinking && (
+              <div className="flex items-center gap-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 animate-pulse">
+                <Loader2 className="w-3 h-3 text-emerald-400 animate-spin" />
+                <span className="text-emerald-400 text-[10px] font-bold uppercase tracking-widest">Thinking</span>
+              </div>
+            )}
+            <div className="flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-400 text-xs font-medium uppercase tracking-wider">Live</span>
+            </div>
           </div>
         )}
       </div>
 
       {/* Whiteboard Area */}
-      <div className="absolute inset-0 pointer-events-none flex flex-col items-center justify-start p-8 mt-20 mb-32 z-10 overflow-y-auto scrollbar-hide">
-        <div className="w-full max-w-3xl pointer-events-auto">
-          {whiteboardItems.map((item, i) => (
+      <div 
+        ref={whiteboardScrollRef}
+        onScroll={handleScroll}
+        onTouchStart={() => { 
+          lastUserInteractionRef.current = Date.now();
+          isUserScrollingRef.current = true; 
+        }}
+        onTouchMove={() => {
+          lastUserInteractionRef.current = Date.now();
+        }}
+        onTouchEnd={() => { 
+          lastUserInteractionRef.current = Date.now();
+          // Keep it true for a bit to allow for momentum
+          setTimeout(() => {
+            if (Date.now() - lastUserInteractionRef.current >= 1500) {
+              isUserScrollingRef.current = false;
+            }
+          }, 1500);
+        }}
+        onMouseDown={() => { 
+          lastUserInteractionRef.current = Date.now();
+          isUserScrollingRef.current = true; 
+        }}
+        onMouseUp={() => { 
+          lastUserInteractionRef.current = Date.now();
+          isUserScrollingRef.current = false; 
+        }}
+        onWheel={() => {
+          lastUserInteractionRef.current = Date.now();
+          isUserScrollingRef.current = true;
+          // Reset after a short delay
+          setTimeout(() => {
+            if (Date.now() - lastUserInteractionRef.current >= 500) {
+              isUserScrollingRef.current = false;
+            }
+          }, 500);
+        }}
+        className={`absolute top-16 bottom-32 left-0 right-0 z-10 overflow-y-auto whiteboard-scroll ${whiteboardItems.length > 0 && !isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}
+      >
+        <div className="flex flex-col items-center justify-start p-2 md:p-8 w-full min-h-full">
+          <div className={`w-full max-w-3xl relative ${whiteboardItems.length > 0 && !isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+            
+            {/* Whiteboard Controls */}
+          {whiteboardItems.length > 0 && (
+            <div className="sticky top-0 z-50 flex justify-end gap-2 w-full mb-3 pointer-events-auto">
+              <button
+                onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
+                className="p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 text-slate-300 hover:text-white rounded-full shadow-lg transition-all"
+                title={isWhiteboardMinimized ? "Show Whiteboard" : "Minimize Whiteboard"}
+              >
+                {isWhiteboardMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={downloadNotes}
+                className="p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 text-slate-300 hover:text-white rounded-full shadow-lg transition-all"
+                title="Download Notes"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {!isWhiteboardMinimized && whiteboardItems.map((item, i) => (
             <div 
               key={i} 
-              className="bg-white/95 backdrop-blur-sm text-slate-900 p-6 rounded-2xl shadow-2xl text-xl md:text-3xl mb-6 border border-slate-200 transform transition-all duration-500 ease-out translate-y-0 opacity-100 w-full break-words"
+              className="whiteboard-item bg-white/95 backdrop-blur-sm text-slate-900 p-4 md:p-6 rounded-2xl shadow-2xl text-lg md:text-2xl mb-4 border border-slate-200 transform transition-all duration-500 ease-out translate-y-0 opacity-100 w-full break-words relative z-0"
               style={{ animation: 'slideUpFade 0.5s ease-out' }}
             >
               <div className="markdown-body prose prose-slate prose-lg max-w-none overflow-x-auto">
-                <Markdown remarkPlugins={[remarkMath, remarkGfm]} rehypePlugins={[rehypeKatex]}>
+                <Markdown 
+                  remarkPlugins={[remarkMath, remarkGfm]} 
+                  rehypePlugins={[rehypeKatex]}
+                  components={markdownComponents}
+                >
                   {item.text}
                 </Markdown>
               </div>
@@ -657,6 +1080,30 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
           ))}
         </div>
       </div>
+    </div>
+
+    {/* Scroll Hint - Moved outside to prevent jumping */}
+      {showScrollHint && !isWhiteboardMinimized && (
+        <button 
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (whiteboardScrollRef.current) {
+              const container = whiteboardScrollRef.current;
+              container.scrollTo({ 
+                top: container.scrollHeight, 
+                behavior: 'smooth' 
+              });
+              // Re-check scroll state after a delay
+              setTimeout(handleScroll, 500);
+            }
+          }}
+          className="fixed bottom-36 left-1/2 -translate-x-1/2 z-[100] pointer-events-auto bg-emerald-500 text-white px-6 py-3 rounded-full text-sm font-bold shadow-[0_8px_30px_rgb(16,185,129,0.5)] backdrop-blur-md flex items-center gap-2 border border-white/20 active:scale-95 transition-all"
+        >
+          <span>Scroll to Latest</span>
+          <Play className="w-3 h-3 rotate-90 fill-current" />
+        </button>
+      )}
 
       {/* Error Message */}
       {error && (
@@ -666,7 +1113,7 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
       )}
 
       {/* Controls */}
-      <div className="absolute bottom-0 left-0 right-0 p-8 flex justify-center items-center gap-6 z-20">
+      <div className="absolute bottom-0 left-0 right-0 p-4 md:p-8 flex justify-center items-center gap-4 md:gap-6 z-20">
         {!isConnected && !isConnecting ? (
           <button
             onClick={startSession}
@@ -681,51 +1128,86 @@ You can also write on the virtual whiteboard using the writeOnWhiteboard tool to
             Connecting...
           </div>
         ) : (
-          <>
-            <button
-              onClick={() => setIsMicMuted(!isMicMuted)}
-              className={`p-4 rounded-full backdrop-blur-md transition-all ${
-                isMicMuted 
-                  ? 'bg-red-500/80 text-white hover:bg-red-500' 
-                  : 'bg-white/20 text-white hover:bg-white/30 border border-white/10'
-              }`}
-            >
-              {isMicMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-            </button>
-            
-            <button
-              onClick={stopSession}
-              className="p-5 rounded-full bg-red-500 text-white hover:bg-red-600 hover:scale-105 transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-            >
-              <Square className="w-6 h-6 fill-current" />
-            </button>
+          <div className="flex flex-col items-center gap-6 w-full max-w-md px-4">
+            {/* Volume Control */}
+            <div className="flex flex-col gap-1 w-full">
+              <div className="flex justify-between px-2">
+                <span className="text-white/60 text-[10px] uppercase font-bold tracking-wider">Tutor Volume</span>
+                <span className="text-white/60 text-[10px] font-mono">{Math.round(volume * 100)}%</span>
+              </div>
+              <div className="flex items-center gap-3 w-full bg-slate-900/60 backdrop-blur-md px-6 py-3 rounded-full border border-white/10 shadow-lg">
+                {volume === 0 ? <VolumeX className="w-5 h-5 text-slate-400" /> : <Volume2 className="w-5 h-5 text-white" />}
+                <input 
+                  type="range" 
+                  min="0" 
+                  max="1" 
+                  step="0.01" 
+                  value={volume} 
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="flex-1 h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-400"
+                />
+              </div>
+            </div>
 
-            <button
-              onClick={() => setIsVideoMuted(!isVideoMuted)}
-              className={`p-4 rounded-full backdrop-blur-md transition-all ${
-                isVideoMuted 
-                  ? 'bg-red-500/80 text-white hover:bg-red-500' 
-                  : 'bg-white/20 text-white hover:bg-white/30 border border-white/10'
-              }`}
-            >
-              {isVideoMuted ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
-            </button>
+            <div className="flex justify-center items-center gap-4 md:gap-6">
+              <button
+                onClick={() => setIsMicMuted(!isMicMuted)}
+                className={`p-4 rounded-full backdrop-blur-md transition-all ${
+                  isMicMuted 
+                    ? 'bg-red-500/80 text-white hover:bg-red-500' 
+                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/10'
+                }`}
+              >
+                {isMicMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              </button>
+              
+              <button
+                onClick={stopSession}
+                className="p-5 rounded-full bg-red-500 text-white hover:bg-red-600 hover:scale-105 transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)]"
+              >
+                <Square className="w-6 h-6 fill-current" />
+              </button>
 
-            <button
-              onClick={() => setWhiteboardItems([])}
-              className="p-4 rounded-full bg-white/20 text-white hover:bg-white/30 backdrop-blur-md border border-white/10 transition-all"
-              title="Clear Whiteboard"
-            >
-              <Eraser className="w-6 h-6" />
-            </button>
-          </>
+              <button
+                onClick={() => setIsVideoMuted(!isVideoMuted)}
+                className={`p-4 rounded-full backdrop-blur-md transition-all ${
+                  isVideoMuted 
+                    ? 'bg-red-500/80 text-white hover:bg-red-500' 
+                    : 'bg-white/20 text-white hover:bg-white/30 border border-white/10'
+                }`}
+              >
+                {isVideoMuted ? <VideoOff className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+              </button>
+
+              <button
+                onClick={() => setWhiteboardItems([])}
+                className="p-4 rounded-full bg-white/20 text-white hover:bg-white/30 backdrop-blur-md border border-white/10 transition-all"
+                title="Clear Whiteboard"
+              >
+                <Eraser className="w-6 h-6" />
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
       <style>{`
         @keyframes slideUpFade {
-          from { opacity: 0; transform: translateY(20px) scale(0.95); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        .mermaid-container svg {
+          max-width: 100% !important;
+          height: auto !important;
+        }
+        .markdown-body {
+          font-size: inherit;
+        }
+        .markdown-body p {
+          margin-bottom: 1rem;
+        }
+        .markdown-body p:last-child {
+          margin-bottom: 0;
         }
       `}</style>
     </div>
