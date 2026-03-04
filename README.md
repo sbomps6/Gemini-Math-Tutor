@@ -78,7 +78,7 @@ To test **OwlHelp!** and experience the virtual math tutor, follow these steps:
 
 ### 2. Launch the Application
 - **Locally**: Run `npm install` and then `npm run dev`. Open `http://localhost:3000`.
-- **Online**: Go to www.owlhelp.study from any browser.
+- **Online**: Go to www.owlhelp.study from any browser for sign-in.
 
 ### 3. Testing the Tutor
 1. **Grant Permissions**: When prompted, allow access to your **Camera** and **Microphone**.
