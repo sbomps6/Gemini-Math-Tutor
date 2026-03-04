@@ -213,12 +213,71 @@ const LegalModals = ({ showPrivacy, setShowPrivacy, showTerms, setShowTerms }: {
   );
 };
 
+const WelcomeOverlay = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex justify-center items-start z-[10000] p-4 md:p-6 overflow-y-auto py-12">
+      <div className="bg-slate-900 border border-slate-800 text-white rounded-[2rem] w-full max-w-2xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 my-auto">
+        <div className="p-6 md:p-10 pb-12 flex flex-col items-center text-center">
+          <div className="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center mb-6">
+            <GraduationCap className="w-8 h-8 text-sky-400" />
+          </div>
+          
+          <h2 className="text-3xl md:text-4xl font-bold mb-3 tracking-tight">Empowering Students, Informing Parents.</h2>
+          <p className="text-slate-400 text-lg mb-10 max-w-lg">Follow these three simple steps to get the most out of your AI-powered study buddy.</p>
+          
+          <div className="grid grid-cols-1 gap-6 md:gap-8 text-left w-full mb-10">
+            <div className="flex gap-5 group">
+              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-sky-500/20 transition-colors">
+                <Link className="w-6 h-6 text-sky-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Sign In & Link Up</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Sign in with your Google account to access the Parent Portal. From there, you can securely link your account to your child’s student profile to share access across your family.</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-5 group">
+              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
+                <Sparkles className="w-6 h-6 text-emerald-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Personalize the Experience</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Once linked, you can customize the AI's learning style to match your child’s specific curriculum and needs. Our system, powered by Google Gemini, adapts to provide age-relevant and supportive learning guidance.</p>
+              </div>
+            </div>
+            
+            <div className="flex gap-5 group">
+              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
+                <BarChart className="w-6 h-6 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold mb-2">Monitor Growth & Engagement</h3>
+                <p className="text-slate-400 text-sm leading-relaxed">Check back into the Parent Portal anytime to view real-time metrics of use. You’ll see exactly how your child is engaging with their "Virtual Learning Buddy" and where they are making the most progress.</p>
+              </div>
+            </div>
+          </div>
+          
+          <button 
+            onClick={onClose}
+            className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-sky-500/20 active:scale-[0.98]"
+          >
+            Get Started
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
   const [showParentPortal, setShowParentPortal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showAddChildModal, setShowAddChildModal] = useState(false);
@@ -256,6 +315,18 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const isProcessingLinkRef = useRef(false);
+
+  useEffect(() => {
+    const hasSeenWelcome = localStorage.getItem('owlhelp_welcome_seen');
+    if (!hasSeenWelcome) {
+      setShowWelcomeOverlay(true);
+    }
+  }, []);
+
+  const closeWelcomeOverlay = () => {
+    localStorage.setItem('owlhelp_welcome_seen', 'true');
+    setShowWelcomeOverlay(false);
+  };
 
   useEffect(() => {
     // Check for pairing code in URL
@@ -301,9 +372,6 @@ export default function App() {
               if (profile.children && profile.children.length > 0) {
                 setActiveChildId(profile.children[0].id);
               }
-              // Auto-redirect parents to portal if they are returning
-              setShowParentPortal(true);
-              setShowSplash(false);
             }
             setShowOnboarding(false);
           } else {
@@ -1788,6 +1856,7 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             </button>
           </form>
         </div>
+        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
       </div>
     );
   }
@@ -2311,6 +2380,7 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
           </div>
         )}
         <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
+        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
       </div>
     );
   }
@@ -2477,6 +2547,25 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
               </div>
 
               <div className="mt-12 flex flex-col items-center justify-center border-t border-slate-700 pt-8">
+                <button 
+                  onClick={() => {
+                    setShowSettings(false);
+                    setShowWelcomeOverlay(true);
+                  }}
+                  className="w-full bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-bold py-3 px-6 rounded-xl transition-all mb-4 flex items-center justify-center gap-2 border border-sky-500/20"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Preview Welcome Overlay
+                </button>
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('owlhelp_welcome_seen');
+                    window.location.reload();
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-4 transition-colors mb-6"
+                >
+                  Reset Welcome State (Reloads App)
+                </button>
                 <p className="text-xs text-slate-500 mb-4">Version 1.0.0</p>
                 <img 
                   src="/Schmojologo.jpg" 
@@ -2738,6 +2827,7 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
           </div>
         )}
         <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
+        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
       </div>
     );
   }
@@ -3009,6 +3099,7 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
       </div>
 
       <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
+      <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
       <style>{`
         @keyframes slideUpFade {
           from { opacity: 0; }
