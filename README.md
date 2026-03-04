@@ -78,7 +78,7 @@ To test **OwlHelp!** and experience the virtual math tutor, follow these steps:
 
 ### 2. Launch the Application
 - **Locally**: Run `npm install` and then `npm run dev`. Open `http://localhost:3000`.
-- **Preview**: Use the provided [App URL](https://ais-dev-2o2ozpfms2zmlm5wmvxe54-187211787605.us-east1.run.app).
+- **Online**: Go to www.owlhelp.study from any browser.
 
 ### 3. Testing the Tutor
 1. **Grant Permissions**: When prompted, allow access to your **Camera** and **Microphone**.
@@ -86,7 +86,7 @@ To test **OwlHelp!** and experience the virtual math tutor, follow these steps:
 3. **Show Your Homework**: Hold up a math problem or a piece of homework to your camera.
 4. **Interact via Voice**: Ask a question like, *"Can you help me understand how to solve this equation?"* or *"What's the first step here?"*
 5. **Observe the Socratic Method**: Notice how the tutor doesn't just give you the answer but asks guiding questions to help you figure it out yourself.
-6. **Check the Whiteboard**: Look for visual cues or drawings on the interactive whiteboard as the tutor explains concepts.
+6. **Check the Whiteboard**: Ask for or look for visual cues or drawings on the interactive whiteboard as the tutor explains concepts.
 
 ### 4. Verification
 - **Audio**: You should hear the tutor's voice responding to you in real-time.
@@ -97,7 +97,7 @@ To test **OwlHelp!** and experience the virtual math tutor, follow these steps:
 
 - **Real-time Voice Interaction**: Talk to your tutor using the Gemini 2.5 Flash Native Audio model.
 - **Visual Homework Analysis**: Show your homework to the tutor via your camera.
-- **Interest-Based Learning**: The tutor adapts its teaching style to your hobbies and interests.
+- **Interest-Based Learning**: If logged in as a student, the tutor adapts its teaching style to your hobbies and interests.
 - **Interactive Whiteboard**: A shared space for visual explanations and problem-solving.
 - **Socratic Method**: The tutor guides you to the answer rather than just giving it to you.
 
