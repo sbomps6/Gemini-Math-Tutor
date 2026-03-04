@@ -67,6 +67,32 @@ The build artifacts will be stored in the `dist/` directory. You can preview the
 npm run preview
 ```
 
+## Reproducible Testing Instructions
+
+To test **OwlHelp!** and experience the virtual math tutor, follow these steps:
+
+### 1. Environment Setup
+- Ensure you have a valid **Google Gemini API Key**.
+- If running locally, add it to your `.env` file as `GEMINI_API_KEY`.
+- If testing via the **AI Studio Preview**, the API key is handled automatically.
+
+### 2. Launch the Application
+- **Locally**: Run `npm install` and then `npm run dev`. Open `http://localhost:3000`.
+- **Preview**: Use the provided [App URL](https://ais-dev-2o2ozpfms2zmlm5wmvxe54-187211787605.us-east1.run.app).
+
+### 3. Testing the Tutor
+1. **Grant Permissions**: When prompted, allow access to your **Camera** and **Microphone**.
+2. **Start a Session**: Click the "Start Tutoring" or "Connect" button to initialize the real-time session with OwlHelp.
+3. **Show Your Homework**: Hold up a math problem or a piece of homework to your camera.
+4. **Interact via Voice**: Ask a question like, *"Can you help me understand how to solve this equation?"* or *"What's the first step here?"*
+5. **Observe the Socratic Method**: Notice how the tutor doesn't just give you the answer but asks guiding questions to help you figure it out yourself.
+6. **Check the Whiteboard**: Look for visual cues or drawings on the interactive whiteboard as the tutor explains concepts.
+
+### 4. Verification
+- **Audio**: You should hear the tutor's voice responding to you in real-time.
+- **Visuals**: The tutor should acknowledge what it sees through your camera.
+- **Math Accuracy**: The tutor should correctly identify mathematical symbols and logic.
+
 ## Features
 
 - **Real-time Voice Interaction**: Talk to your tutor using the Gemini 2.5 Flash Native Audio model.
