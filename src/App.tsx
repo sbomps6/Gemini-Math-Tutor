@@ -11,6 +11,16 @@ import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, Use
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { trackPageView, trackEvent } from './services/analytics';
 import { jsPDF } from 'jspdf';
+import { motion, AnimatePresence } from 'motion/react';
+
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 mermaid.initialize({ 
   startOnLoad: false, 
@@ -27,6 +37,158 @@ mermaid.initialize({
     fontSize: '16px'
   }
 });
+
+const TutorialOverlay = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const [step, setStep] = useState(0);
+  
+  const steps = [
+    {
+      title: "Welcome to OwlHelp!",
+      description: "Your personal AI math tutor that sees what you see and talks to you in real-time.",
+      icon: <GraduationCap className="w-12 h-12 text-sky-400" />,
+      image: "https://images.unsplash.com/photo-1509062522246-3755977927d7?auto=format&fit=crop&w=800&q=80"
+    },
+    {
+      title: "How it Works",
+      description: "Point your camera at any math problem. OwlHelp! uses advanced AI to understand the context and guide you step-by-step.",
+      icon: <Video className="w-12 h-12 text-emerald-400" />,
+      image: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=800&q=80"
+    },
+    {
+      title: "Talk Naturally",
+      description: "No typing required! Just talk to the tutor like a real person. Ask questions, explain your thinking, and get instant feedback.",
+      icon: <Mic className="w-12 h-12 text-indigo-400" />,
+      image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=800&q=80"
+    },
+    {
+      title: "Parent Portal",
+      description: "Parents can manage student profiles, track progress, and generate pairing codes. You can also start a tutoring session directly from the portal if your child doesn't have their own device.",
+      icon: <Shield className="w-12 h-12 text-amber-400" />,
+      image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=800&q=80"
+    },
+    {
+      title: "Choose Your Voice",
+      description: "Select an AI voice that best fits your student's learning style. From upbeat and energetic to firm and steady, find the perfect guide for their math journey.",
+      icon: <Volume2 className="w-12 h-12 text-sky-400" />,
+      image: "https://images.unsplash.com/photo-1589254065878-42c9da997008?auto=format&fit=crop&w=800&q=80"
+    }
+  ];
+
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-slate-950/90 backdrop-blur-xl z-[10000] flex items-center justify-center p-4 md:p-8"
+    >
+        <motion.div 
+          initial={{ scale: 0.9, y: 20 }}
+          animate={{ scale: 1, y: 0 }}
+          className="bg-slate-900 border border-slate-800 rounded-[2.5rem] w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-full max-h-[800px]"
+        >
+          {/* Left Side: Image/Visual */}
+          <div className="md:w-1/2 relative bg-slate-800 overflow-hidden hidden md:block">
+            <AnimatePresence mode="wait">
+              <motion.img
+                key={step}
+                initial={{ opacity: 0, scale: 1.1 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.5 }}
+                src={steps[step].image}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover opacity-60"
+                referrerPolicy="no-referrer"
+              />
+            </AnimatePresence>
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+            <div className="absolute bottom-12 left-12 right-12">
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.2 }}
+                className="bg-white/10 backdrop-blur-md border border-white/10 p-6 rounded-3xl"
+              >
+                <div className="text-white/60 text-xs font-bold uppercase tracking-widest mb-2">Pro Tip</div>
+                <div className="text-white text-sm leading-relaxed">
+                  {step === 0 && "OwlHelp! works best in a well-lit room with a clear view of your paper."}
+                  {step === 1 && "You can use the whiteboard to see the tutor's step-by-step explanations."}
+                  {step === 2 && "Don't be afraid to ask 'Why?' — the tutor loves explaining the logic!"}
+                  {step === 3 && "You can link multiple students to a single parent account."}
+                  {step === 4 && "Try different voices to see which one keeps your student most engaged!"}
+                </div>
+              </motion.div>
+            </div>
+          </div>
+
+          {/* Right Side: Content */}
+          <div className="flex-1 p-8 md:p-12 flex flex-col justify-between">
+            <div className="flex justify-between items-center mb-8">
+              <div className="flex gap-1.5">
+                {steps.map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-sky-500' : 'w-1.5 bg-slate-700'}`} 
+                  />
+                ))}
+              </div>
+              <button 
+                onClick={onClose}
+                className="text-slate-500 hover:text-white transition-colors p-2 hover:bg-white/5 rounded-full"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center">
+              <motion.div
+                key={step}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="mb-6 inline-flex p-4 bg-slate-800 rounded-3xl border border-slate-700 shadow-inner">
+                  {steps[step].icon}
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold text-white mb-4 tracking-tight">
+                  {steps[step].title}
+                </h2>
+                <p className="text-slate-400 text-lg leading-relaxed max-w-md">
+                  {steps[step].description}
+                </p>
+              </motion.div>
+            </div>
+
+            <div className="mt-12 flex items-center gap-4">
+              {step > 0 && (
+                <button
+                  onClick={() => setStep(step - 1)}
+                  className="px-8 py-4 rounded-2xl text-slate-400 font-bold hover:text-white transition-colors"
+                >
+                  Back
+                </button>
+              )}
+              {step < steps.length - 1 ? (
+                <button
+                  onClick={() => setStep(step + 1)}
+                  className="flex-1 bg-sky-500 hover:bg-sky-600 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-sky-500/20 flex items-center justify-center gap-2"
+                >
+                  Next Step
+                </button>
+              ) : (
+                <button
+                  onClick={onClose}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                >
+                  Get Started
+                </button>
+              )}
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+  );
+};
 
 const MermaidChart = ({ chart }: { chart: string }) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -85,49 +247,50 @@ const MermaidChart = ({ chart }: { chart: string }) => {
   );
 };
 
-const apiKey = process.env.GEMINI_API_KEY;
-
-if (!apiKey) {
-  console.error("API Key is missing! Check your build-args.");
-}
-
-// Fix double-slash in WebSocket URLs (common issue with some proxies and the Gemini SDK)
-if (typeof window !== 'undefined') {
-  try {
-    const OriginalWS = window.WebSocket;
-    if (OriginalWS) {
-      const WSProxy = function(this: any, url: string | URL, protocols?: string | string[]) {
-        let finalUrl = url;
-        if (typeof url === 'string' && url.includes('//ws/')) {
-          console.log("[OwlHelp!] Cleaning double-slash in WebSocket URL:", url);
-          finalUrl = url.replace('//ws/', '/ws/');
-        }
-        return new OriginalWS(finalUrl, protocols);
-      };
-      WSProxy.prototype = OriginalWS.prototype;
-      (WSProxy as any).CONNECTING = OriginalWS.CONNECTING;
-      (WSProxy as any).OPEN = OriginalWS.OPEN;
-      (WSProxy as any).CLOSING = OriginalWS.CLOSING;
-      (WSProxy as any).CLOSED = OriginalWS.CLOSED;
+const getApiKey = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      // Check multiple possible locations for the key
+      const env = (window as any).RUNTIME_ENV || {};
       
-      try {
-        // Try direct assignment first
-        (window as any).WebSocket = WSProxy;
-      } catch (e) {
-        // Fallback to defineProperty if assignment fails
-        Object.defineProperty(window, 'WebSocket', {
-          value: WSProxy,
-          configurable: true,
-          writable: true
-        });
+      // If the server explicitly says it has a key, we can use a placeholder
+      // because our /api-proxy will force the real key onto the request.
+      if (env.HAS_SERVER_KEY === true) {
+        return "SERVER_SIDE_KEY";
       }
-    }
-  } catch (e) {
-    console.warn("[OwlHelp!] Could not intercept WebSocket:", e);
-  }
-}
 
-const ai = new GoogleGenAI({ apiKey });
+      // The platform injects the selected key into process.env.API_KEY
+      // In a Vite environment, we might need to check multiple places
+      const key = (window as any).process?.env?.API_KEY || 
+                  (window as any).process?.env?.GEMINI_API_KEY ||
+                  env.GEMINI_API_KEY || 
+                  env.API_KEY || 
+                  env.GOOGLE_API_KEY || 
+                  env.VITE_GEMINI_API_KEY || 
+                  (window as any).GEMINI_API_KEY ||
+                  import.meta.env.VITE_GEMINI_API_KEY || 
+                  '';
+      
+      const trimmedKey = typeof key === 'string' ? key.trim() : '';
+      
+      if (trimmedKey && 
+          trimmedKey !== 'MY_GEMINI_API_KEY' && 
+          trimmedKey !== 'undefined' && 
+          trimmedKey !== 'null' &&
+          trimmedKey.length > 10) {
+        return trimmedKey;
+      }
+    } catch (e) {
+      // Silent fail to prevent re-render loops if console is hooked
+    }
+  }
+  return '';
+};
+
+// Re-check key after a short delay to handle potential race conditions with injection
+if (typeof window !== 'undefined') {
+  getApiKey();
+}
 
 function arrayBufferToBase64(buffer: ArrayBuffer) {
   let binary = '';
@@ -147,6 +310,7 @@ interface ChildProfile {
   interests?: string;
   pairingCode?: string;
   linkedUserId?: string; // The auth UID of the student if they log in themselves
+  preferredVoice?: string;
 }
 
 interface UserProfile {
@@ -154,6 +318,7 @@ interface UserProfile {
   studentName?: string; // For single student accounts
   parentName?: string;
   children?: ChildProfile[]; // For parent accounts
+  preferredVoice?: string;
 }
 
 const LegalModals = ({ showPrivacy, setShowPrivacy, showTerms, setShowTerms }: { showPrivacy: boolean, setShowPrivacy: (v: boolean) => void, showTerms: boolean, setShowTerms: (v: boolean) => void }) => {
@@ -213,71 +378,67 @@ const LegalModals = ({ showPrivacy, setShowPrivacy, showTerms, setShowTerms }: {
   );
 };
 
-const WelcomeOverlay = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex justify-center items-start z-[10000] p-4 md:p-6 overflow-y-auto py-12">
-      <div className="bg-slate-900 border border-slate-800 text-white rounded-[2rem] w-full max-w-2xl flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 my-auto">
-        <div className="p-6 md:p-10 pb-12 flex flex-col items-center text-center">
-          <div className="w-16 h-16 bg-sky-500/10 rounded-2xl flex items-center justify-center mb-6">
-            <GraduationCap className="w-8 h-8 text-sky-400" />
-          </div>
-          
-          <h2 className="text-3xl md:text-4xl font-bold mb-3 tracking-tight">Empowering Students, Informing Parents.</h2>
-          <p className="text-slate-400 text-lg mb-10 max-w-lg">Follow these three simple steps to get the most out of your AI-powered study buddy.</p>
-          
-          <div className="grid grid-cols-1 gap-6 md:gap-8 text-left w-full mb-10">
-            <div className="flex gap-5 group">
-              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-sky-500/20 transition-colors">
-                <Link className="w-6 h-6 text-sky-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Sign In & Link Up</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Sign in with your Google account to access the Parent Portal. From there, you can securely link your account to your child’s student profile to share access across your family.</p>
-              </div>
-            </div>
-            
-            <div className="flex gap-5 group">
-              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-emerald-500/20 transition-colors">
-                <Sparkles className="w-6 h-6 text-emerald-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Personalize the Experience</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Once linked, you can customize the AI's learning style to match your child’s specific curriculum and needs. Our system, powered by Google Gemini, adapts to provide age-relevant and supportive learning guidance.</p>
-              </div>
-            </div>
-            
-            <div className="flex gap-5 group">
-              <div className="flex-shrink-0 w-12 h-12 bg-slate-800 rounded-xl flex items-center justify-center group-hover:bg-amber-500/20 transition-colors">
-                <BarChart className="w-6 h-6 text-amber-400" />
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold mb-2">Monitor Growth & Engagement</h3>
-                <p className="text-slate-400 text-sm leading-relaxed">Check back into the Parent Portal anytime to view real-time metrics of use. You’ll see exactly how your child is engaging with their "Virtual Learning Buddy" and where they are making the most progress.</p>
-              </div>
-            </div>
-          </div>
-          
-          <button 
-            onClick={onClose}
-            className="w-full bg-sky-500 hover:bg-sky-400 text-white font-bold py-4 px-8 rounded-2xl transition-all shadow-lg shadow-sky-500/20 active:scale-[0.98]"
-          >
-            Get Started
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 export default function App() {
+  const [connectionLogs, setConnectionLogs] = useState<string[]>([]);
+  const [apiKey, setApiKey] = useState<string>(getApiKey());
+
+  // Re-check key after a short delay to handle potential race conditions with injection
+  useEffect(() => {
+    if (!apiKey) {
+      const timer = setTimeout(() => {
+        const delayedKey = getApiKey();
+        if (delayedKey) {
+          setApiKey(delayedKey);
+          console.log("[OwlHelp!] API Key found after delay.");
+        }
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [apiKey]);
+
+  const addLog = useCallback((msg: string) => {
+    const time = new Date().toLocaleTimeString();
+    setConnectionLogs(prev => [...prev.slice(-19), `[${time}] ${msg}`]);
+  }, []);
+
+  // Capture console logs for the monitor
+  useEffect(() => {
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    const originalError = console.error;
+
+    console.log = (...args: any[]) => {
+      const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      if (msg.includes('[OwlHelp!]') || msg.includes('Live API') || msg.includes('WebSocket')) {
+        addLog(msg);
+      }
+      originalLog.apply(console, args);
+    };
+
+    console.warn = (...args: any[]) => {
+      const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      addLog(`WARN: ${msg}`);
+      originalWarn.apply(console, args);
+    };
+
+    console.error = (...args: any[]) => {
+      const msg = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+      addLog(`ERROR: ${msg}`);
+      originalError.apply(console, args);
+    };
+
+    return () => {
+      console.log = originalLog;
+      console.warn = originalWarn;
+      console.error = originalError;
+    };
+  }, [addLog]);
+
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [activeChildId, setActiveChildId] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
   const [showParentPortal, setShowParentPortal] = useState(false);
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [showAddChildModal, setShowAddChildModal] = useState(false);
@@ -285,14 +446,75 @@ export default function App() {
   const [showStudentLogin, setShowStudentLogin] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [studentPairingCode, setStudentPairingCode] = useState('');
   const [editingChild, setEditingChild] = useState<ChildProfile | null>(null);
   const [linkingChild, setLinkingChild] = useState<ChildProfile | null>(null);
   const [statsChild, setStatsChild] = useState<ChildProfile | null>(null);
   const [showSplash, setShowSplash] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(true);
+
+  // Check for API Key on mount
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const selected = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
   const [showAbout, setShowAbout] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState('Puck');
+
+  // Load preferred voice from profile
+  useEffect(() => {
+    if (userProfile) {
+      let voiceToSet = 'Puck';
+      if (userProfile.role === 'parent' && activeChildId) {
+        const child = userProfile.children?.find(c => c.id === activeChildId);
+        if (child?.preferredVoice) {
+          voiceToSet = child.preferredVoice;
+        }
+      } else if (userProfile.role === 'student' && userProfile.preferredVoice) {
+        voiceToSet = userProfile.preferredVoice;
+      }
+      setSelectedVoice(voiceToSet || 'Puck');
+    }
+  }, [userProfile, activeChildId]);
+  const handleVoiceChange = async (voice: string) => {
+    setSelectedVoice(voice);
+    
+    if (!userProfile || !user) return;
+
+    try {
+      let updatedProfile = { ...userProfile };
+      
+      if (userProfile.role === 'parent' && activeChildId) {
+        const updatedChildren = userProfile.children?.map(child => 
+          child.id === activeChildId ? { ...child, preferredVoice: voice } : child
+        );
+        updatedProfile = { ...userProfile, children: updatedChildren };
+      } else {
+        updatedProfile = { ...userProfile, preferredVoice: voice };
+      }
+
+      await setDoc(doc(db, 'users', user.uid), updatedProfile, { merge: true });
+      setUserProfile(updatedProfile);
+      console.log("[OwlHelp!] Saved preferred voice:", voice);
+    } catch (err) {
+      console.error("[OwlHelp!] Error saving voice preference:", err);
+    }
+  };
+
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [isRequestingPermissions, setIsRequestingPermissions] = useState(false);
 
@@ -315,18 +537,6 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const isProcessingLinkRef = useRef(false);
-
-  useEffect(() => {
-    const hasSeenWelcome = localStorage.getItem('owlhelp_welcome_seen');
-    if (!hasSeenWelcome) {
-      setShowWelcomeOverlay(true);
-    }
-  }, []);
-
-  const closeWelcomeOverlay = () => {
-    localStorage.setItem('owlhelp_welcome_seen', 'true');
-    setShowWelcomeOverlay(false);
-  };
 
   useEffect(() => {
     // Check for pairing code in URL
@@ -372,6 +582,9 @@ export default function App() {
               if (profile.children && profile.children.length > 0) {
                 setActiveChildId(profile.children[0].id);
               }
+              // STOP auto-redirecting parents to portal - start on homepage
+              setShowParentPortal(false);
+              setShowSplash(true);
             }
             setShowOnboarding(false);
           } else {
@@ -419,6 +632,12 @@ export default function App() {
         }
       }
       setIsLoadingProfile(false);
+
+      // Check for tutorial for new users
+      const tutorialCompleted = window.localStorage.getItem('owlhelp_tutorial_completed');
+      if (!tutorialCompleted) {
+        setShowTutorial(true);
+      }
     });
     
     // Check if returning from a magic link
@@ -639,6 +858,9 @@ export default function App() {
   const videoIntervalRef = useRef<number | null>(null);
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const isFirstTurnRef = useRef(true);
+  const retryCountRef = useRef(0);
+  const MAX_RETRIES = 2;
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const hasSentInitialGreetingRef = useRef(false);
   const hasReceivedContentRef = useRef(false);
   const isMicMutedRef = useRef(isMicMuted);
@@ -859,16 +1081,21 @@ export default function App() {
 
     setIsConnected(false);
     setIsConnecting(false);
-    setWhiteboardItems([]);
+    // setWhiteboardItems([]); // Preserved across drops
     isFirstTurnRef.current = true;
     hasSentInitialGreetingRef.current = false;
     hasReceivedContentRef.current = false;
 
+    // Clear any pending retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+
     // Redirect based on role
+    setShowSplash(true);
     if (userProfile?.role === 'parent') {
       setShowParentPortal(true);
-    } else {
-      setShowSplash(true);
     }
   }, [userProfile]);
 
@@ -1122,12 +1349,46 @@ export default function App() {
       nextPlayTimeRef.current = playbackContextRef.current.currentTime;
 
       // 3. Connect to Live API
+      console.log("Initiating Live API connection...");
+      
+      if (!(window as any).WS_REDIRECTOR_INSTALLED) {
+        console.warn("[OwlHelp!] WebSocket Redirector NOT detected! Connection may fail.");
+      }
+      
+      // Initialize Gemini AI with current API key
+      let currentApiKey = getApiKey();
+      
+      // Retry logic if key is missing (handles potential race conditions)
+      if (!currentApiKey) {
+        console.warn("[OwlHelp!] API Key missing on first check, retrying in 500ms...");
+        await new Promise(resolve => setTimeout(resolve, 500));
+        currentApiKey = getApiKey();
+      }
+
+      if (!currentApiKey) {
+        setError("API Key is missing. Please set GEMINI_API_KEY in the Secrets panel and refresh.");
+        setIsConnecting(false);
+        return;
+      }
+      
+      const ai = new GoogleGenAI({ apiKey: currentApiKey });
+      console.log(`[OwlHelp!] Initialized GoogleGenAI with key: ${currentApiKey.substring(0, 5)}...`);
+      
+      const connectionTimeout = setTimeout(() => {
+        if (isConnecting) {
+          console.error("Live API Connection Timeout (15s) - No onopen/onerror/onclose fired.");
+          setError("Connection timed out. This is often caused by a firewall or proxy blocking WebSocket connections. Please try a different network or check your browser settings.");
+          setIsConnecting(false);
+          stopSession();
+        }
+      }, 15000);
+
       const sessionPromise = ai.live.connect({
         model: "gemini-2.5-flash-native-audio-preview-09-2025",
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice || 'Puck' } },
           },
           systemInstruction: `Role: You are "OwlHelp!," a patient, encouraging, and highly observant expert Algebra tutor. Your goal is to help students truly understand math concepts, not just give them the answers.
 ${currentStudentName ? `\nThe student you are tutoring is named ${currentStudentName}. Always greet them by their name when the session starts, and occasionally use their name to encourage them.` : ''}
@@ -1164,43 +1425,14 @@ Strict Rules of Engagement:
 19. Plain English Explanations: When using the whiteboard, always include a brief explanation in plain English alongside the math equations so the student understands the logic being shown.
 20. Clear the Whiteboard: When moving to a new problem or if the whiteboard gets too cluttered, ALWAYS use the clearFirst: true parameter in the writeOnWhiteboard tool to start fresh.
 21. Minimize Interruptions: Do not interrupt yourself just because the camera moved. Only interrupt if the student explicitly asks a new question or if they make a significant mistake that needs immediate correction. Finish your current thought before addressing minor visual changes.
-22. Diagram Support: You can draw diagrams, flowcharts, number lines, and coordinate planes on the whiteboard using Mermaid.js. To do this, use the 'mermaidCode' parameter in the writeOnWhiteboard tool.
-    - CRITICAL: Pass ONLY the raw Mermaid code in the 'mermaidCode' parameter. Do NOT wrap it in markdown backticks. Do NOT put text in this parameter.
-    - CRITICAL: You MUST NOT combine different diagram types (e.g., 'pie' and 'graph TD') in a single tool call. If you need both, make two separate calls.
-    - For Number Lines (e.g., x=4): Use 'graph LR' with nodes for each number. Use double parentheses '(( ))' for the target point to make it a circle.
-      Example: graph LR\nn1[-1]---n2[0]---n3[1]---n4[2]---n5[3]---n6((4))---n7[5]\nstyle n6 fill:#fbbf24,stroke:#b45309,stroke-width:4px
-    - For Geometric Shapes: Use 'graph TD' or 'graph LR' with custom node shapes.
-      - Circle: node1((Text))
-      - Square: node1[Text]
-      - Rhombus: node1{Text}
-      - Triangle-ish: node1>Text]
-      - Cylinder: node1[(Text)] (This is the ONLY way to draw a cylinder)
-      Example: graph TD\nc1[(Cylinder)]
-    - For Pie Charts: Use 'pie' syntax. Each data point MUST be on a new line. The title MUST be on a single line.
-      Example:
-      pie title Pets
-      "Dogs" : 386
-      "Cats" : 85
-    - For Cartesian Planes and Function Graphs: You MUST use 'xychart-beta' syntax. This is the best way to show a coordinate plane.
-      - CRITICAL: 'xychart-beta' ONLY supports 'line' and 'bar'. It does NOT support 'scatter'.
-      - CRITICAL: The data array for 'line' or 'bar' MUST have the exact same number of elements as the 'x-axis' array.
-      - CRITICAL: Do NOT use coordinate pairs like [[x, y]]. Use a single array of values that map to the x-axis categories.
-      Example (Graphing y = 2x + 1):
-      xychart-beta
-      title "Graph of y = 2x + 1"
-      x-axis [-2, -1, 0, 1, 2]
-      y-axis "y-value" -5 --> 5
-      line [-3, -1, 1, 3, 5]
-      
-      Example (Showing a specific point at x=0, y=4):
-      xychart-beta
-      title "Point (0, 4)"
-      x-axis [-2, -1, 0, 1, 2]
-      y-axis "y" 0 --> 5
-      bar [0, 0, 4, 0, 0]
-    - For Flowcharts: Use 'graph TD' or 'graph LR'.
-    - ALWAYS ensure the Mermaid code is valid and follows the specific syntax for each type.
-23. Double Check Your Work: Always double-check your own math and logic internally before speaking or writing it on the whiteboard to ensure it is 100% correct prior to showing the student.
+22. Diagram Support: Use the 'writeOnWhiteboard' tool with 'mermaidCode' for diagrams.
+    - CRITICAL: Pass raw Mermaid code ONLY. No backticks. No extra text.
+    - Number Lines: Use 'graph LR' with '(( ))' for target points.
+    - Geometric Shapes: Use 'graph TD' or 'graph LR'. (Circle: (( )), Square: [ ], Rhombus: { }, Cylinder: [( )]).
+    - Pie Charts: Use 'pie' syntax.
+    - Coordinate Planes: Use 'xychart-beta' with 'line' or 'bar'.
+    - Flowcharts: Use 'graph TD' or 'graph LR'.
+23. Double Check Your Work: Always verify your own math and logic internally before speaking or writing.
 
 You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, chart, or any explanation that would benefit from being visual. If the student asks to use the whiteboard or asks for a visual explanation, you MUST use this tool immediately. Do not just speak it.
 24. Interest-Based Visuals: When using the whiteboard to show examples, ALWAYS incorporate the student's interests. For example, if they like Minecraft, use blocks or creepers in your word problems and diagrams. If they like soccer, use goals or players.`,
@@ -1229,19 +1461,21 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
         },
         callbacks: {
           onopen: () => {
-            console.log("Live API Connection Opened");
+            clearTimeout(connectionTimeout);
+            console.log("[OwlHelp!] Live API connection opened successfully!");
             setIsConnected(true);
             setIsConnecting(false);
+            setError(null);
 
             // Ensure audio context is resumed (browser safety)
             if (playbackContextRef.current?.state === 'suspended') {
-              console.log("Resuming playbackContext on open");
-              playbackContextRef.current.resume().catch(e => console.error("Error resuming on open:", e));
+              console.log("[OwlHelp!] Resuming playbackContext on open");
+              playbackContextRef.current.resume().catch(e => console.error("[OwlHelp!] Error resuming on open:", e));
             }
 
             // Play a local chime to indicate readiness and wake up the audio context
             if (playbackContextRef.current) {
-              console.log("Playing readiness chime");
+              console.log("[OwlHelp!] Playing readiness chime");
               const sampleRate = playbackContextRef.current.sampleRate;
               const duration = 0.4;
               const length = Math.floor(sampleRate * duration);
@@ -1261,32 +1495,28 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             // Multi-stage greeting sequence for maximum reliability
             const sendGreeting = (attempt: number) => {
               if (hasReceivedContentRef.current || !isConnected) {
-                if (hasReceivedContentRef.current) console.log("Greeting cancelled: content already received");
                 return;
               }
               
-              console.log(`Sending initial greeting (Attempt ${attempt})...`);
+              console.log(`[OwlHelp!] Sending initial greeting (Attempt ${attempt})...`);
               sessionPromise.then(session => {
                 session.sendClientContent({
                   turns: [{ role: 'user', parts: [{ text: 'START_SESSION' }] }],
                   turnComplete: true
                 });
-              }).catch(e => console.error(`Error in greeting attempt ${attempt}:`, e));
+              }).catch(e => console.error(`[OwlHelp!] Error in greeting attempt ${attempt}:`, e));
             };
 
-            // Stage 1: Immediate-ish (after chime)
-            setTimeout(() => sendGreeting(1), 1000);
+            // Stage 1: Fallback nudge at 5 seconds only if no response after setupComplete
+            setTimeout(() => sendGreeting(1), 5000);
             
-            // Stage 2: 4 seconds
-            setTimeout(() => sendGreeting(2), 4000);
-            
-            // Stage 3: 8 seconds
-            setTimeout(() => sendGreeting(3), 8000);
+            // Stage 2: Final nudge at 10 seconds
+            setTimeout(() => sendGreeting(2), 10000);
 
             // Fallback unmute: If AI doesn't respond at all within 15 seconds, unmute so user isn't stuck
             setTimeout(() => {
               if (isFirstTurnRef.current && isMicMutedRef.current) {
-                console.log("Fallback unmute triggered - AI did not respond to initial greeting.");
+                console.log("[OwlHelp!] Fallback unmute triggered - AI did not respond to initial greeting.");
                 setIsMicMuted(false);
                 isFirstTurnRef.current = false;
               }
@@ -1384,34 +1614,60 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             }, 1000); // 1 FPS
           },
           onmessage: async (message: LiveServerMessage) => {
-            console.log("Live API Message Received:", message);
+            console.log("[OwlHelp!] Live API message received:", JSON.stringify(message).substring(0, 200) + "...");
+
+            // Handle API Key errors (e.g. theft/abuse detection or invalid key)
+            const serverMsg = message as any;
+            if (serverMsg.error) {
+              const errMsg = serverMsg.error.message || "";
+              if (errMsg.includes("Requested entity was not found") || 
+                  errMsg.includes("API_KEY_INVALID") || 
+                  errMsg.includes("API key not found")) {
+                console.error("[OwlHelp!] Critical API Key Error:", errMsg);
+                setHasApiKey(false);
+                setError("Security Alert: Your API key is invalid or has been revoked. Please use the 'Secure API Key' button to reconnect safely.");
+                stopSession();
+                return;
+              }
+            }
 
             // Handle setupComplete
             if (message.setupComplete) {
-              console.log("Live API Setup Complete");
+              console.log("[OwlHelp!] Live API setupComplete received");
               
               setWhiteboardItems(prev => [...prev, { text: "OwlHelp! is ready. Connecting to your tutor..." }]);
               
               // Ensure audio contexts are active
               if (playbackContextRef.current && playbackContextRef.current.state === 'suspended') {
-                console.log("Resuming playbackContext on setupComplete");
-                playbackContextRef.current.resume().catch(e => console.error("Error resuming playback context:", e));
+                console.log("[OwlHelp!] Resuming playbackContext on setupComplete");
+                playbackContextRef.current.resume().catch(e => console.error("[OwlHelp!] Error resuming playback context:", e));
               }
               if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                console.log("Resuming audioContext on setupComplete");
-                audioContextRef.current.resume().catch(e => console.error("Error resuming audio context:", e));
+                console.log("[OwlHelp!] Resuming audioContext on setupComplete");
+                audioContextRef.current.resume().catch(e => console.error("[OwlHelp!] Error resuming audio context:", e));
               }
 
-              // Send a nudge greeting on setupComplete
-              console.log("Sending nudge greeting on setupComplete...");
+              // Send the initial greeting now that setup is complete
+              console.log("[OwlHelp!] Sending initial greeting on setupComplete...");
               sessionPromise.then(session => {
                 if (!hasReceivedContentRef.current) {
+                  console.log("[OwlHelp!] Dispatching START_SESSION content...");
                   session.sendClientContent({
                     turns: [{ role: 'user', parts: [{ text: 'START_SESSION' }] }],
                     turnComplete: true
                   });
+                } else {
+                  console.log("[OwlHelp!] setupComplete received but content already arriving, skipping greeting.");
                 }
-              }).catch(e => console.error("Error sending nudge greeting:", e));
+              }).catch(e => console.error("[OwlHelp!] Error sending greeting on setupComplete:", e));
+
+              // Automatically clear the "Connecting..." message after 5 seconds even if no content received
+              // to prevent the user from feeling stuck.
+              setTimeout(() => {
+                if (isFirstTurnRef.current) {
+                  setWhiteboardItems(prev => prev.filter(item => !item.text.includes("Connecting to your tutor")));
+                }
+              }, 5000);
             }
 
             // Handle audio output
@@ -1433,41 +1689,45 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
               parts.forEach((part, i) => {
                 const base64Audio = part.inlineData?.data;
                 if (base64Audio && playbackContextRef.current) {
-                  const binaryString = atob(base64Audio);
-                  // Ensure even length for Int16Array
-                  const validLength = binaryString.length % 2 === 0 ? binaryString.length : binaryString.length - 1;
-                  const bytes = new Uint8Array(validLength);
-                  for (let j = 0; j < validLength; j++) {
-                    bytes[j] = binaryString.charCodeAt(j);
-                  }
-                  const pcm16 = new Int16Array(bytes.buffer);
-                  const float32 = new Float32Array(pcm16.length);
-                  for (let j = 0; j < pcm16.length; j++) {
-                    float32[j] = pcm16[j] / 32768;
-                  }
-
-                  if (float32.length > 0) {
-                    const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
-                    audioBuffer.getChannelData(0).set(float32);
-                    const source = playbackContextRef.current.createBufferSource();
-                    source.buffer = audioBuffer;
-                    
-                    if (gainNodeRef.current) {
-                      source.connect(gainNodeRef.current);
-                    } else {
-                      source.connect(playbackContextRef.current.destination);
+                  try {
+                    const binaryString = atob(base64Audio);
+                    // Ensure even length for Int16Array
+                    const validLength = binaryString.length % 2 === 0 ? binaryString.length : binaryString.length - 1;
+                    const bytes = new Uint8Array(validLength);
+                    for (let j = 0; j < validLength; j++) {
+                      bytes[j] = binaryString.charCodeAt(j);
+                    }
+                    const pcm16 = new Int16Array(bytes.buffer);
+                    const float32 = new Float32Array(pcm16.length);
+                    for (let j = 0; j < pcm16.length; j++) {
+                      float32[j] = pcm16[j] / 32768;
                     }
 
-                    const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
-                    if (i === 0) {
-                      console.log("Scheduling audio chunk at", startTime, "Context state:", playbackContextRef.current.state);
+                    if (float32.length > 0) {
+                      const audioBuffer = playbackContextRef.current.createBuffer(1, float32.length, 24000);
+                      audioBuffer.getChannelData(0).set(float32);
+                      const source = playbackContextRef.current.createBufferSource();
+                      source.buffer = audioBuffer;
+                      
+                      if (gainNodeRef.current) {
+                        source.connect(gainNodeRef.current);
+                      } else {
+                        source.connect(playbackContextRef.current.destination);
+                      }
+
+                      const startTime = Math.max(playbackContextRef.current.currentTime, nextPlayTimeRef.current);
+                      if (i === 0) {
+                        console.log("Scheduling audio chunk at", startTime, "Context state:", playbackContextRef.current.state);
+                      }
+                      source.onended = () => {
+                        activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
+                      };
+                      activeSourcesRef.current.push(source);
+                      source.start(startTime);
+                      nextPlayTimeRef.current = startTime + audioBuffer.duration;
                     }
-                    source.onended = () => {
-                      activeSourcesRef.current = activeSourcesRef.current.filter(s => s !== source);
-                    };
-                    activeSourcesRef.current.push(source);
-                    source.start(startTime);
-                    nextPlayTimeRef.current = startTime + audioBuffer.duration;
+                  } catch (atobErr) {
+                    console.error("[OwlHelp!] Failed to decode audio base64:", atobErr);
                   }
                 }
               });
@@ -1529,80 +1789,78 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                   setIsWhiteboardMinimized(false);
                   setWhiteboardItems(prev => {
                     const newItems = args.clearFirst ? [] : [...prev];
-                    if (args.text) {
-                      let content = args.text;
-                      
-                      // 1. Unescape backticks if the AI escaped them
-                      content = content.replace(/\\`/g, '`');
-                      
-                      // 2. Fix missing backticks for lines starting with "mermaid" or diagram types
-                      const diagramTypes = ['graph', 'pie', 'sequenceDiagram', 'gantt', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gitGraph', 'mindmap', 'timeline'];
-                      const lines = content.split('\n');
-                      const fixedLines = lines.map(line => {
-                        const trimmed = line.trim();
-                        // If it starts with "mermaid " or a diagram type and isn't already in a code block
-                        const startsWithMermaid = trimmed.toLowerCase().startsWith('mermaid ');
-                        const startsWithDiagramType = diagramTypes.some(type => trimmed.toLowerCase().startsWith(type + ' ') || trimmed.toLowerCase() === type);
-                        
-                        if ((startsWithMermaid || startsWithDiagramType) && !content.includes('```')) {
-                          let diagramCode = trimmed;
-                          if (startsWithMermaid) {
-                            diagramCode = trimmed.substring(8).trim();
-                          }
-                          return `\n\`\`\`mermaid\n${diagramCode}\n\`\`\`\n`;
-                        }
-                        return line;
-                      });
-                      content = fixedLines.join('\n');
-
-                      // 3. Fix single-line mermaid blocks and missing newlines
-                      content = content.replace(/```mermaid\s*(.+?)\s*```/gs, (match, p1) => {
-                        let code = p1.trim();
-                        
-                        // Remove redundant 'mermaid' keyword at the start of the block
-                        if (code.toLowerCase().startsWith('mermaid\n') || code.toLowerCase().startsWith('mermaid ')) {
-                          code = code.substring(7).trim();
-                        }
-                        
-                        // Fix pie charts
-                        if (code.startsWith('pie')) {
-                          code = code.replace(/\s+"/g, '\n"');
-                          // Fix multi-line titles by joining everything before the first quote
-                          const firstQuoteIndex = code.indexOf('"');
-                          if (firstQuoteIndex > -1) {
-                            const beforeQuotes = code.substring(0, firstQuoteIndex);
-                            const afterQuotes = code.substring(firstQuoteIndex);
-                            let fixedTitle = beforeQuotes.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
-                            // Revert: title should be on the same line as pie
-                            if (fixedTitle.startsWith('pie\ntitle ')) {
-                              fixedTitle = fixedTitle.replace('pie\ntitle ', 'pie title ');
-                            }
-                            code = fixedTitle + '\n' + afterQuotes;
-                          }
-                        }
-                        
-                        // Fix graphs
-                        if (code.startsWith('graph TD') || code.startsWith('graph LR')) {
-                          // Replace semicolons with newlines
-                          code = code.replace(/;/g, '\n');
-                          // Ensure graph declaration is on its own line
-                          code = code.replace(/^(graph (TD|LR))\s+/, '$1\n');
-                        }
-                        
-                        return `\n\`\`\`mermaid\n${code}\n\`\`\`\n`;
-                      });
-
-                      // 4. Ensure mermaid blocks have newlines around them for better parsing
-                      const formattedContent = content
-                        .replace(/([^\n])\s*```mermaid/g, '$1\n\n```mermaid')
-                        .replace(/```\s*([^\n])/g, '```\n\n$1');
-                      
-                      newItems.push({ text: formattedContent });
-                    } else if (args.text || args.mermaidCode) {
-                      let content = "";
+                    if (args.text || args.mermaidCode) {
+                      let combinedContent = "";
                       
                       if (args.text) {
-                        content += args.text + "\n\n";
+                        let content = args.text;
+                        
+                        // 1. Unescape backticks if the AI escaped them
+                        content = content.replace(/\\`/g, '`');
+                        
+                        // 2. Fix missing backticks for lines starting with "mermaid" or diagram types
+                        const diagramTypes = ['graph', 'pie', 'sequenceDiagram', 'gantt', 'classDiagram', 'stateDiagram', 'erDiagram', 'journey', 'gitGraph', 'mindmap', 'timeline'];
+                        const lines = content.split('\n');
+                        const fixedLines = lines.map(line => {
+                          const trimmed = line.trim();
+                          // If it starts with "mermaid " or a diagram type and isn't already in a code block
+                          const startsWithMermaid = trimmed.toLowerCase().startsWith('mermaid ');
+                          const startsWithDiagramType = diagramTypes.some(type => trimmed.toLowerCase().startsWith(type + ' ') || trimmed.toLowerCase() === type);
+                          
+                          if ((startsWithMermaid || startsWithDiagramType) && !content.includes('```')) {
+                            let diagramCode = trimmed;
+                            if (startsWithMermaid) {
+                              diagramCode = trimmed.substring(8).trim();
+                            }
+                            return `\n\`\`\`mermaid\n${diagramCode}\n\`\`\`\n`;
+                          }
+                          return line;
+                        });
+                        content = fixedLines.join('\n');
+
+                        // 3. Fix single-line mermaid blocks and missing newlines
+                        content = content.replace(/```mermaid\s*(.+?)\s*```/gs, (match, p1) => {
+                          let code = p1.trim();
+                          
+                          // Remove redundant 'mermaid' keyword at the start of the block
+                          if (code.toLowerCase().startsWith('mermaid\n') || code.toLowerCase().startsWith('mermaid ')) {
+                            code = code.substring(7).trim();
+                          }
+                          
+                          // Fix pie charts
+                          if (code.startsWith('pie')) {
+                            code = code.replace(/\s+"/g, '\n"');
+                            // Fix multi-line titles by joining everything before the first quote
+                            const firstQuoteIndex = code.indexOf('"');
+                            if (firstQuoteIndex > -1) {
+                              const beforeQuotes = code.substring(0, firstQuoteIndex);
+                              const afterQuotes = code.substring(firstQuoteIndex);
+                              let fixedTitle = beforeQuotes.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                              // Revert: title should be on the same line as pie
+                              if (fixedTitle.startsWith('pie\ntitle ')) {
+                                fixedTitle = fixedTitle.replace('pie\ntitle ', 'pie title ');
+                              }
+                              code = fixedTitle + '\n' + afterQuotes;
+                            }
+                          }
+                          
+                          // Fix graphs
+                          if (code.startsWith('graph TD') || code.startsWith('graph LR')) {
+                            // Replace semicolons with newlines
+                            code = code.replace(/;/g, '\n');
+                            // Ensure graph declaration is on its own line
+                            code = code.replace(/^(graph (TD|LR))\s+/, '$1\n');
+                          }
+                          
+                          return `\n\`\`\`mermaid\n${code}\n\`\`\`\n`;
+                        });
+
+                        // 4. Ensure mermaid blocks have newlines around them for better parsing
+                        const formattedContent = content
+                          .replace(/([^\n])\s*```mermaid/g, '$1\n\n```mermaid')
+                          .replace(/```\s*([^\n])/g, '```\n\n$1');
+                        
+                        combinedContent += formattedContent + "\n\n";
                       }
                       
                       if (args.mermaidCode) {
@@ -1641,11 +1899,11 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                           code = code.replace(/^(graph (TD|LR))\s+/, '$1\n');
                         }
                         
-                        content += "```mermaid\n" + code + "\n```\n\n";
+                        combinedContent += "```mermaid\n" + code + "\n```\n\n";
                       }
                       
-                      if (content.trim()) {
-                        newItems.push({ text: content.trim() });
+                      if (combinedContent.trim()) {
+                        newItems.push({ text: combinedContent.trim() });
                       }
                     }
                     return newItems;
@@ -1670,9 +1928,26 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             }
           },
           onerror: (err) => {
-            console.error("Live API Error Details:", err);
-            // Check if it's a common restriction error
+            clearTimeout(connectionTimeout);
+            console.error("[OwlHelp!] Live API Error Details:", err);
+            
             const errorMsg = err?.message || "";
+
+            // Check if we should retry automatically
+            if (retryCountRef.current < MAX_RETRIES && isConnected) {
+              retryCountRef.current += 1;
+              console.log(`[OwlHelp!] Attempting automatic reconnection (${retryCountRef.current}/${MAX_RETRIES})...`);
+              
+              stopSession();
+              setIsConnecting(true);
+              
+              retryTimeoutRef.current = setTimeout(() => {
+                startSession();
+              }, 2000); // Wait 2 seconds before retrying
+              return;
+            }
+
+            // Check if it's a common restriction error
             if (errorMsg.includes("403") || errorMsg.includes("API_KEY_INVALID")) {
               setError("Connection rejected. This is usually caused by Google Cloud API Key restrictions. Ensure 'www.owlhelp.study/*' is added to your HTTP Referrer restrictions in the Google Cloud Console.");
             } else if (errorMsg.includes("404")) {
@@ -1680,17 +1955,49 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             } else {
               setError(`Connection error: ${errorMsg || "Please try again."}`);
             }
+            
+            // Log extra details if available
+            if (err instanceof Event) {
+              const target = err.target as any;
+              if (target && target.url) {
+                console.error("[OwlHelp!] Failed connection URL:", target.url);
+              }
+            }
             stopSession();
           },
-          onclose: () => {
+          onclose: (event) => {
+            clearTimeout(connectionTimeout);
+            console.log("[OwlHelp!] Live API connection closed:", event);
+
+            // Check if we should retry automatically on unexpected close
+            // Code 1000 is normal closure, anything else might be a drop
+            if (retryCountRef.current < MAX_RETRIES && isConnected && event.code !== 1000) {
+              retryCountRef.current += 1;
+              console.log(`[OwlHelp!] Connection dropped. Attempting automatic reconnection (${retryCountRef.current}/${MAX_RETRIES})...`);
+              
+              stopSession();
+              setIsConnecting(true);
+              
+              retryTimeoutRef.current = setTimeout(() => {
+                startSession();
+              }, 2000);
+              return;
+            }
+
+            if (event && (event as any).reason) {
+              console.warn("[OwlHelp!] Close reason:", (event as any).reason);
+            }
             stopSession();
           }
         }
       });
       sessionPromise.then(session => {
+        clearTimeout(connectionTimeout);
         console.log("Live API Session Promise Resolved");
         sessionRef.current = session;
+        retryCountRef.current = 0; // Reset retry count on success
       }).catch(err => {
+        clearTimeout(connectionTimeout);
         console.error("Live API Connection Promise Rejected:", err);
         setError("Failed to connect to AI. Please try again.");
         stopSession();
@@ -1706,12 +2013,24 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
 
   useEffect(() => {
     return () => {
-      stopSession();
+      // Direct cleanup of resources on unmount
+      if (sessionRef.current) {
+        try {
+          sessionRef.current.close();
+        } catch (e) {}
+        sessionRef.current = null;
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
+        streamRef.current = null;
       }
     };
-  }, [stopSession]);
+  }, []); // Only run on unmount
+
+  const handleCloseTutorial = () => {
+    setShowTutorial(false);
+    window.localStorage.setItem('owlhelp_tutorial_completed', 'true');
+  };
 
   if (isLoadingProfile) {
     return (
@@ -1856,7 +2175,11 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             </button>
           </form>
         </div>
-        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
+        <AnimatePresence>
+          {showTutorial && (
+            <TutorialOverlay isOpen={showTutorial} onClose={handleCloseTutorial} />
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1871,7 +2194,10 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
           <div className="flex items-center justify-between mb-8">
             <h1 className="text-3xl font-bold">Parent Portal</h1>
             <button 
-              onClick={() => setShowParentPortal(false)} 
+              onClick={() => {
+                setShowParentPortal(false);
+                setShowSplash(true);
+              }} 
               className="text-slate-400 hover:text-white flex items-center gap-2 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" /> Back to Home
@@ -1884,12 +2210,21 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                 <h2 className="text-2xl font-semibold">Welcome, {userProfile.parentName || 'Parent'}!</h2>
                 <p className="text-slate-400 text-sm mt-1">Manage your children's learning sessions.</p>
               </div>
-              <button 
-                onClick={handleSignOut}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
-              >
-                Sign Out
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setShowTutorial(true)}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                >
+                  <Info className="w-4 h-4" />
+                  Tutorial
+                </button>
+                <button 
+                  onClick={handleSignOut}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl text-sm font-medium transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
             </div>
 
             <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
@@ -1928,7 +2263,10 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                       onClick={() => {
                         setActiveChildId(child.id);
                         setShowParentPortal(false);
-                        requestPermissions(child.id);
+                        // Small delay to ensure state updates propagate
+                        setTimeout(() => {
+                          requestPermissions(child.id);
+                        }, 100);
                       }}
                       className="bg-sky-500 hover:bg-sky-600 text-white font-bold py-3 px-4 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-sky-500/20"
                     >
@@ -2380,7 +2718,11 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
           </div>
         )}
         <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
-        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
+        <AnimatePresence>
+          {showTutorial && (
+            <TutorialOverlay isOpen={showTutorial} onClose={handleCloseTutorial} />
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -2398,12 +2740,23 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
         </button>
 
         {/* Settings Button */}
-        <button 
-          onClick={() => setShowSettings(true)}
-          className="absolute top-6 right-6 z-50 text-slate-400 hover:text-white transition-colors"
-        >
-          <Settings className="w-8 h-8" />
-        </button>
+        <div className="absolute top-6 right-6 z-50 flex items-center gap-4">
+          {!hasApiKey && (
+            <button 
+              onClick={handleOpenKeySelector}
+              className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-lg flex items-center gap-2 animate-pulse"
+            >
+              <Shield className="w-4 h-4" />
+              Secure API Key Required
+            </button>
+          )}
+          <button 
+            onClick={() => setShowSettings(true)}
+            className="text-slate-400 hover:text-white transition-colors"
+          >
+            <Settings className="w-8 h-8" />
+          </button>
+        </div>
 
         {/* About Modal */}
         {showAbout && (
@@ -2437,6 +2790,23 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                     Unlike other tools that just give you the answer, OwlHelp! acts like a real tutor in the room, guiding you step-by-step 
                     through the logic of every problem.
                   </p>
+                </section>
+
+                <section>
+                  <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-emerald-400" />
+                    Security & Privacy
+                  </h3>
+                  <p className="text-sm">
+                    OwlHelp! is built with security in mind. We use the official Google AI Studio 
+                    secure key injection system. This means your API keys are never hardcoded 
+                    in the application and are managed through a secure, platform-level dialog.
+                  </p>
+                  <div className="mt-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl">
+                    <p className="text-xs text-emerald-400 font-medium">
+                      <strong>Pro Tip:</strong> Ask an employee for the exact name of their network. Hackers often create networks with subtle typos (e.g., "Starbucks_Guest_Secure") to trick you into connecting to their machine instead of the shop's router.
+                    </p>
+                  </div>
                 </section>
 
                 <section className="grid sm:grid-cols-2 gap-6">
@@ -2524,7 +2894,7 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
                 <label className="block text-sm font-semibold text-slate-300 mb-2">AI Voice</label>
                 <select 
                   value={selectedVoice}
-                  onChange={(e) => setSelectedVoice(e.target.value)}
+                  onChange={(e) => handleVoiceChange(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-600 rounded-xl px-4 py-3 text-white focus:ring-2 focus:ring-sky-500 focus:border-transparent outline-none"
                 >
                   <option value="Puck">Puck: Upbeat and energetic</option>
@@ -2547,25 +2917,6 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
               </div>
 
               <div className="mt-12 flex flex-col items-center justify-center border-t border-slate-700 pt-8">
-                <button 
-                  onClick={() => {
-                    setShowSettings(false);
-                    setShowWelcomeOverlay(true);
-                  }}
-                  className="w-full bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 font-bold py-3 px-6 rounded-xl transition-all mb-4 flex items-center justify-center gap-2 border border-sky-500/20"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Preview Welcome Overlay
-                </button>
-                <button 
-                  onClick={() => {
-                    localStorage.removeItem('owlhelp_welcome_seen');
-                    window.location.reload();
-                  }}
-                  className="text-xs text-slate-500 hover:text-slate-300 underline underline-offset-4 transition-colors mb-6"
-                >
-                  Reset Welcome State (Reloads App)
-                </button>
                 <p className="text-xs text-slate-500 mb-4">Version 1.0.0</p>
                 <img 
                   src="/Schmojologo.jpg" 
@@ -2827,7 +3178,11 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
           </div>
         )}
         <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
-        <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
+        <AnimatePresence>
+          {showTutorial && (
+            <TutorialOverlay isOpen={showTutorial} onClose={handleCloseTutorial} />
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -2931,13 +3286,13 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
             }
           }, 500);
         }}
-        className={`absolute top-16 bottom-32 left-0 right-0 z-10 overflow-y-auto whiteboard-scroll ${whiteboardItems.length > 0 && !isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}
+        className={`absolute top-16 bottom-32 left-0 right-0 z-10 overflow-y-auto whiteboard-scroll ${!isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}
       >
         <div className="flex flex-col items-center justify-start p-2 md:p-8 w-full min-h-full">
-          <div className={`w-full max-w-3xl relative ${whiteboardItems.length > 0 && !isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}>
+          <div className={`w-full max-w-3xl relative ${!isWhiteboardMinimized ? 'pointer-events-auto' : 'pointer-events-none'}`}>
             
             {/* Whiteboard Controls */}
-          {whiteboardItems.length > 0 && (
+          {!isWhiteboardMinimized && (isConnected || isConnecting) && (
             <div className="sticky top-0 z-50 flex justify-end gap-2 w-full mb-3 pointer-events-auto">
               <button
                 onClick={() => setIsWhiteboardMinimized(!isWhiteboardMinimized)}
@@ -2946,13 +3301,25 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
               >
                 {isWhiteboardMinimized ? <Maximize2 className="w-4 h-4" /> : <Minimize2 className="w-4 h-4" />}
               </button>
-              <button
-                onClick={downloadPDF}
-                className="p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 text-slate-300 hover:text-white rounded-full shadow-lg transition-all"
-                title="Download Study Guide (PDF)"
-              >
-                <FileText className="w-4 h-4" />
-              </button>
+              {whiteboardItems.length > 0 && (
+                <button
+                  onClick={downloadPDF}
+                  className="p-2.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur-md border border-slate-700 text-slate-300 hover:text-white rounded-full shadow-lg transition-all"
+                  title="Download Study Guide (PDF)"
+                >
+                  <FileText className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {!isWhiteboardMinimized && whiteboardItems.length === 0 && (isConnected || isConnecting) && (
+            <div className="flex flex-col items-center justify-center mt-20 bg-white/95 backdrop-blur-sm text-slate-500 p-8 rounded-3xl shadow-2xl border border-slate-200" style={{ animation: 'slideUpFade 0.5s ease-out' }}>
+              <Eraser className="w-16 h-16 mb-4 opacity-50" />
+              <h3 className="text-xl font-bold text-slate-700 mb-2">Whiteboard is empty</h3>
+              <p className="text-center max-w-sm">
+                Ask your tutor to show you an example, draw a diagram, or explain a concept visually!
+              </p>
             </div>
           )}
 
@@ -3000,10 +3367,27 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
         </button>
       )}
 
+      {/* API Key Warning */}
+      {!apiKey && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 bg-amber-500/90 text-white px-6 py-3 rounded-xl shadow-2xl backdrop-blur-md z-[200] text-sm font-bold flex items-center gap-3 border border-amber-400/50">
+          <Shield className="w-5 h-5" />
+          <span>API Key Missing: Please set GEMINI_API_KEY in the Secrets panel.</span>
+        </div>
+      )}
+
       {/* Error Message */}
       {error && (
-        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-red-500/90 text-white px-6 py-3 rounded-xl shadow-lg backdrop-blur-md z-20 text-sm font-medium">
-          {error}
+        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 bg-red-500/90 text-white px-6 py-4 rounded-2xl shadow-2xl backdrop-blur-md z-[100] text-sm font-medium flex flex-col items-center gap-3 border border-red-400/50 max-w-md text-center">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5" />
+            <span>{error}</span>
+          </div>
+          <button 
+            onClick={() => { setError(null); startSession(); }}
+            className="bg-white text-red-600 px-4 py-2 rounded-xl font-bold hover:bg-red-50 transition-colors text-xs uppercase tracking-wider"
+          >
+            Try Again
+          </button>
         </div>
       )}
 
@@ -3099,7 +3483,12 @@ You MUST use the writeOnWhiteboard tool whenever you want to show a diagram, cha
       </div>
 
       <LegalModals showPrivacy={showPrivacy} setShowPrivacy={setShowPrivacy} showTerms={showTerms} setShowTerms={setShowTerms} />
-      <WelcomeOverlay isOpen={showWelcomeOverlay} onClose={closeWelcomeOverlay} />
+      <AnimatePresence>
+        {showTutorial && (
+          <TutorialOverlay isOpen={showTutorial} onClose={handleCloseTutorial} />
+        )}
+      </AnimatePresence>
+      
       <style>{`
         @keyframes slideUpFade {
           from { opacity: 0; }
