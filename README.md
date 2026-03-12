@@ -7,7 +7,7 @@ OwlHelp! is an AI-powered tutoring application designed to guide students throug
 
 ## 🛠️ Spin-up Instructions
 
-Follow these steps to set up and run OwlHelp! locally or deploy it to your own cloud environment.
+Follow these steps to set up and run OwlHelp! locally or deploy it to your own cloud environment.  To test the project live, go to www.owlhelp.study
 
 ### Prerequisites
 - **Node.js** (v18 or higher)
